@@ -1,0 +1,295 @@
+---
+title: "IRP"
+author: "Lin Yu"
+date: "2022/12/15"
+# subtitle:
+output:
+  rmdformats::readthedown:
+  fig_width: 8
+  fig_height: 5
+  fig_caption: TRUE
+  highlight: "kate"
+  lightbox: FALSE
+  thumbnails: FALSE
+  gallery: FALSE
+  toc_depth: 3
+  embed_fonts: TRUE
+  number_sections: yes
+  use_bookdown: TRUE
+  css: styles.css
+  # highlight: tango
+  # self_contained: true
+  # code_folding: hide
+  # thumbnails: true
+  # gallery: false
+  # fig_width: 4
+  # fig_height: 4
+  # toc_depth: 4
+  # df_print: kable
+  # fig_caption: yes
+  # use_bookdown: true
+  # number_sections: yes
+  # toc: yes
+# output:
+#   html_document:
+#     code_folding: hide              
+#     toc: yes              
+#     toc_float: yes      
+#     df_print: paged #print paged tables   kable    
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+source("code/lib_helper.R")
+source("code/cust_f.R")
+```
+
+
+# Read dataset
+```{r read data}
+
+source("00_dataset.R")
+
+head(trainingSet)
+
+```
+# Feature selection
+```{r feature select, echo=TRUE, child=c('01_feature_selection.Rmd')}
+BOSS_MODE <- FALSE
+```
+# Tuning
+```{r modeling, echo=TRUE, warning=FALSE, child=c('02_tune_build_model.Rmd')}
+BOSS_MODE <- FALSE
+```
+# PPV
+```{r}
+glm_cat_test <- pred_cat_f(model_m = glmnet_m,model_name='ElasticNet',
+                           testdat=testSet1,data_type = 'Test')%>% data.frame()
+
+rf_cat_test <- pred_cat_f(model_m = rf_m,model_name='RF',testdat=testSet1,data_type = 'Test')%>% data.frame()
+
+xgb_cat_test <- pred_cat_f(model_m = xgb_m,model_name='XGBoost',testdat=testSet1,data_type = 'Test')%>% data.frame()
+
+
+glm_cat_val <- pred_cat_f(model_m = glmnet_m,model_name='ElasticNet',testdat=testSet1,data_type = 'Validation')%>% data.frame()
+
+rf_cat_val <- pred_cat_f(model_m = rf_m,model_name='RF',testdat=testSet1,data_type = 'Validation')%>% data.frame()
+
+xgb_cat_val <- pred_cat_f(model_m = xgb_m,model_name='XGBoost',testdat=testSet1,data_type = 'Validation')%>% data.frame()
+
+
+cat_sum <- rbind(glm_cat_test,rf_cat_test,xgb_cat_test,
+      glm_cat_val,rf_cat_val,xgb_cat_val
+      )
+
+
+DT::datatable(cat_sum,
+              filter = "top", editable = "cell", extensions = "Buttons",
+              options = list(
+                dom = "Blfrtip",
+                scrollX = TRUE,
+                buttons = c("copy", "csv", "excel", "pdf", "print"),
+                lengthMenu = list(
+                  c(5, 25, 50, 100, -1),
+                  c(5, 25, 50, 100, "All")
+                )
+              )
+)
+```
+
+
+# Evaluation
+## metrics 
+```{r metrics}
+glm_perf <- sum_perf_f(glmnet_m, testdat=testSet1,model_name='ElasticNet') %>% data.frame()
+rf_perf <- sum_perf_f(rf_m, testdat=testSet1,model_name='RF') %>% data.frame()
+xgb_perf <- sum_perf_f(xgb_m, testdat=testSet1,model_name='XGBoost') %>% data.frame()
+
+metrics_res <- rbind(glm_perf,rf_perf,xgb_perf)
+
+# colnames(metrics_res) <- c('data_type','model_name','Acc','Kappa','AUCPROC','AUCPR','SBrier','Brier','Precision','Recall','F','auc_ap_sbr','s_z','s_p')
+
+DT::datatable(metrics_res,
+              filter = "top", editable = "cell", extensions = "Buttons",
+              options = list(
+                dom = "Blfrtip",
+                scrollX = TRUE,
+                buttons = c("copy", "csv", "excel", "pdf", "print"),
+                lengthMenu = list(
+                  c(5, 25, 50, 100, -1),
+                  c(5, 25, 50, 100, "All")
+                )
+              )
+)
+
+```
+## viz perf
+## ROC
+
+```{r}
+
+
+
+
+roc_glmnet <- roc_f(model_m=glmnet_m,testdat=testSet1)
+roc_rf <- roc_f(model_m=rf_m,testdat=testSet1)
+roc_xgb <- roc_f(model_m=xgb_m,testdat=testSet1)
+
+g_roc_train <- ggroc(list(ElasticNet=roc_glmnet[[1]], RF=roc_rf[[1]], XGBoost = roc_xgb[[1]]), size = 1,legacy.axes=TRUE)+
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1), color="darkgrey", linetype="dashed")+
+  theme_minimal()
+g_roc_test <- ggroc(list(ElasticNet=roc_glmnet[[2]], RF=roc_rf[[2]], XGBoost = roc_xgb[[2]]), size = 1,legacy.axes=TRUE)+
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1), color="darkgrey", linetype="dashed")+
+  theme_minimal()
+
+g_roc_train
+
+```
+
+```{r}
+g_roc_test
+```
+
+## Calibration plot
+
+```{r}
+cali_plot_f(model_m=glmnet_m,model_name='ElasticNet',testdat=testSet1)
+
+cali_plot_f(model_m=rf_m,model_name='RF',testdat=testSet1)
+ 
+cali_plot_f(model_m=xgb_m,model_name='XGBoost',testdat=testSet1)
+```
+
+
+
+## Feature importance
+
+```{r}
+glm_vip <- vip_f(glmnet_m,model_name = 'ElasticNet')
+rf_vip <- vip_f(rf_m,model_name = 'RF')
+xgb_vip <- vip_f(xgb_m,model_name = 'XGBoost')
+vip_sum <- rbind(glm_vip,rf_vip,xgb_vip)
+
+DT::datatable(vip_sum,
+              filter = "top", editable = "cell", extensions = "Buttons",
+              options = list(
+                dom = "Blfrtip",
+                scrollX = TRUE,
+                buttons = c("copy", "csv", "excel", "pdf", "print"),
+                lengthMenu = list(
+                  c(5, 25, 50, 100, -1),
+                  c(5, 25, 50, 100, "All")
+                )
+              )
+)
+```
+
+
+## SHAP
+
+```{r include=FALSE}
+ks_glm <- kernelshap(glmnet_m, trainingSet1[,-1],
+                   bg_X = trainingSet1,
+                   type="prob")
+
+ks_rf <- kernelshap(rf_m, trainingSet1[,-1],
+                   bg_X = trainingSet1,
+                   type="prob"
+                   )  
+
+
+ks_xgb <- kernelshap(xgb_m, trainingSet1[,-1],
+                   bg_X = trainingSet1,
+                   type="prob"
+                   )  
+
+
+```
+
+```{r}
+
+# ks_glm <- kernelshap(glmnet_m, trainingSet1[,-1],
+#                    bg_X = trainingSet1,
+#                    type="prob")
+
+ks_glm1 <- ks_glm$S[[1]][,-6]
+
+ks_glm2 <- ks_glm$S[[2]][,-6]
+
+sv_importance(shapviz(ks_glm1,trainingSet1[,-1]), "bee")
+
+sv_importance(shapviz(ks_glm2,trainingSet1[,-1]), "bee")
+
+
+
+```
+
+
+```{r}
+ks_rf1 <- ks_rf$S[[1]]
+
+ks_rf2 <- ks_rf$S[[2]]
+
+sv_importance(shapviz(ks_rf1,trainingSet1[,-1]), "bee")
+sv_importance(shapviz(ks_rf2,trainingSet1[,-1]), "bee")
+```
+
+
+```{r}
+
+ks_xgb1 <- ks_xgb$S[[1]]
+
+ks_xgb2 <- ks_xgb$S[[2]]
+
+sv_importance(shapviz(ks_xgb1,trainingSet1[,-1]), "bee")
+sv_importance(shapviz(ks_xgb2,trainingSet1[,-1]), "bee")
+
+```
+# Recalibratioin model
+
+
+```{r}
+
+```
+
+
+# Save model for future use
+```{r}
+saveRDS(glmnet_m, "glmnet_m.rds")
+saveRDS(rf_m, "rf_m.rds")
+
+saveRDS(xgb_m, "xgb_m.rds")
+```
+
+
+## backup
+### glmnet
+
+```{r}
+## train and test
+viz_perf_f(model_m=glmnet_m,
+           testdat=testSet1,
+           bin_num=10)
+```
+### rf
+
+```{r}
+viz_perf_f(model_m=rf_m,
+           testdat=testSet1,
+           bin_num=10)
+```
+
+### xgboost
+
+```{r}
+viz_perf_f(model_m=xgb_m,
+           testdat=testSet1,
+           bin_num=10)
+```
+
+

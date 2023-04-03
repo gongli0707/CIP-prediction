@@ -1,0 +1,36 @@
+---
+title: "caret"
+author: "Lin Yu"
+date: '2022-11-02'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+source('code/lib_helper.R')
+```
+
+```{r warning=FALSE}
+#install.packages("library(AppliedPredictiveModeling)")
+library(AppliedPredictiveModeling)
+```
+
+
+##load working data
+```{r}
+dat1 <- read_excel('data/model_dat1.xlsx')
+
+dat2 <- read_excel('data/model_dat2_1031.xlsx')
+
+```
+```{r}
+transparentTheme(trans = .4)
+library(caret)
+
+featurePlot(x = iris[, 1:4], 
+            y = iris$Species, 
+            plot = "pairs",
+            ## Add a key at the top
+            auto.key = list(columns = 3))
+```
+

@@ -1,0 +1,930 @@
+---
+title: 重儿肿瘤医院免疫相关肺炎数据探索
+author: Lin Yu
+date: July 13, 2022
+output:
+  prettydoc::html_pretty:
+    theme: cayman
+    highlight: github
+    toc: yes
+    toc_depth: 3
+    embed_fonts: TRUE
+    number_sections: yes
+    use_bookdown: TRUE
+  #  df_print: kable
+    df_print: paged
+    #toc_float: yes
+    #code_folding: hide 
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  echo = FALSE,
+  message = FALSE,
+  warning = FALSE
+)
+source("code/lib_helper.R")
+library(tableone)
+```
+
+## load data
+
+```{r}
+
+pheu_dat <- read_excel("data/pheu2.xlsx")
+
+## "1001188904" "1001138058" 
+
+
+wkdat <- pheu_dat %>%
+  mutate(
+    是否吸烟 = ifelse(grepl("烟", 生活习惯), "1", "0"),
+    是否饮酒 = ifelse(grepl("酒", 生活习惯), "1", "0"),
+    是否肺癌 = ifelse(grepl("肺", 主要诊断), "1", "0"),
+    上叶 = ifelse(grepl("上", 主要诊断), "1", "0"),
+    下叶 = ifelse(grepl("下", 主要诊断), "1", "0"),
+    合并基础疾病数量 = ifelse(is.na(合并基础疾病), 0, 合并基础疾病数量) %>% as.character(),
+    既往或现在是否有自身免疫性疾病 = ifelse(is.na(既往或现在是否有自身免疫性疾病), "否", 既往或现在是否有自身免疫性疾病),
+    `合并其他抗肿瘤治疗方案（化疗药物名称/种类）` =
+      ifelse(`合并其他抗肿瘤治疗方案（化疗药物名称/种类）` == "NO", "无",
+        `合并其他抗肿瘤治疗方案（化疗药物名称/种类）`
+      ),
+    合并其他抗肿瘤药物种类 = ifelse(`合并其他抗肿瘤治疗方案（化疗药物名称/种类）` == "无", 0,
+      合并其他抗肿瘤药物种类
+    ),
+    合并普通药物种类 = ifelse(is.na(`合并其他治疗方案（普通药物名称/种类）`)|合并普通药物种类=='NO',0,合并普通药物种类),
+    既往治疗方案 = ifelse(既往治疗方案 == "NO" | is.na(既往治疗方案), "无", 既往治疗方案),
+    既往治疗药物种类 = ifelse(既往治疗方案 == "无", 0, 既往治疗药物种类)
+  ) %>% 
+  mutate(`白介素6(0-3.4pg/ml)...72`=as.numeric(str_replace(`白介素6(0-3.4pg/ml)...72`,'<','')),
+         
+         `白介素8(0-62.pg/ml)...73`=str_replace(`白介素8(0-62.pg/ml)...73`,'<',''),
+          `白介素8(0-62.pg/ml)...73`=as.numeric(str_replace(`白介素8(0-62.pg/ml)...73`,'>','')),
+         
+         `白介素10(0-9.10pg/ml)...74`=as.numeric(str_replace(`白介素10(0-9.10pg/ml)...74`,'<','')),
+        
+          `肿瘤坏死因子α(0-8.1pg/ml)...75`=as.numeric(str_replace(`肿瘤坏死因子α(0-8.1pg/ml)...75`,'<','')),
+        
+          `白介素6(0-3.4pg/ml)...77`=as.numeric(str_replace( `白介素6(0-3.4pg/ml)...77`,'<','')),
+         
+          `白介素8(0-62.pg/ml)...78`=as.numeric(str_replace( `白介素8(0-62.pg/ml)...78`,'<','')),
+         
+         `白介素10(0-9.10pg/ml)...79` = str_replace( `白介素10(0-9.10pg/ml)...79`,'>',''),
+         `白介素10(0-9.10pg/ml)...79` = as.numeric(str_replace( `白介素10(0-9.10pg/ml)...79`,'<','')),
+          
+         `肿瘤坏死因子α(0-8.1pg/ml)...80`=str_replace(`肿瘤坏死因子α(0-8.1pg/ml)...80`,'<',''),
+         `肿瘤坏死因子α(0-8.1pg/ml)...80`=as.numeric(str_replace(`肿瘤坏死因子α(0-8.1pg/ml)...80`,'>',''))
+         
+           ) %>% 
+  mutate(label = as.factor(label)) %>% 
+  
+  mutate(免疫药物名称 = ifelse(免疫药物名称=='卡瑞丽珠单抗','卡瑞利珠单抗',免疫药物名称),
+         免疫药物名称 = ifelse(免疫药物名称=='替雷利珠单抗','雷替丽珠单抗',免疫药物名称),
+         免疫药物名称 = ifelse(免疫药物名称=='帕博丽珠单抗'|免疫药物名称==' 帕搏利珠单抗'|免疫药物名称=='Pembrolizumab','帕博利珠单抗',免疫药物名称),
+         
+         免疫药物名称 = ifelse(免疫药物名称=='纳武单抗'|免疫药物名称=='Nivolumab'|免疫药物名称=='/Nivo','纳武利尤单抗',免疫药物名称),
+          免疫药物名称 = ifelse(免疫药物名称=='阿替利珠单抗'|
+                           免疫药物名称== '卡瑞利珠单抗'|
+                         免疫药物名称== '雷替丽珠单抗'|
+                         免疫药物名称== '纳武利尤单抗'|
+                          免疫药物名称=='帕博利珠单抗'|
+                          免疫药物名称=='特瑞普利单抗'|   
+                         免疫药物名称== '信迪利单抗'|免疫药物名称=='Unknown'
+                          ,免疫药物名称,'其他'),
+         免疫药物名称 = ifelse(免疫药物名称=='Unknown','',免疫药物名称)
+         ) %>% 
+  mutate(BMI = `体重kg`/(`身高cm`*0.01)^2)
+## 从生活习惯里面生成是否吸烟 和是否饮酒
+## 是否饮酒
+
+## 从主要诊断中判断是否肺癌
+## 从主要诊断中判断上叶 和下叶
+
+### 逻辑判断： 合并基础疾病为空的，合并基础疾病数量应该为0
+
+## 既往或现在是否有自身免疫性疾病 将NA 填补为否
+
+## 合并其他抗肿瘤治疗方案（化疗药物名称/种类） 把NO 改为无
+
+
+## 合并其他抗肿瘤药物种类为0 when 合并其他抗肿瘤治疗方案（化疗药物名称/种类 为无
+
+
+### 合并其他治疗方案（普通药物名称/种类） 空值改为无
+
+## 既往治疗方案 空值 或者NO 改为无
+
+# 合并普通药物种类为0 when 合并其他治疗方案（普通药物名称/种类）为无
+
+
+## 既往治疗方案 if null 则改为无
+
+## 既往治疗药物种类 为0 if 既往治疗方案为无
+
+
+## CD4淋巴细胞绝对计数(550-1440×10^6/L) == 放射性肺炎？？ 将无替换为NA
+
+## 白介素6(0-3.4pg/ml) <2.00 ???
+
+
+## 白介素8(0-62.pg/ml) <5.00
+
+## 白介素10(0-9.10pg/ml) <5.00
+
+## 肿瘤坏死因子α(0-8.1pg/ml) <5.0
+
+
+## 同名： 白介素2(223-710U/ml)	白介素6(0-3.4pg/ml)	白介素8(0-62.pg/ml)	白介素10(0-9.10pg/ml)	肿瘤坏死因子α(0-8.1pg/ml)	白介素2(223-710U/ml)	白介素6(0-3.4pg/ml)	白介素8(0-62.pg/ml)	白介素10(0-9.10pg/ml)	肿瘤坏死因子α(0-8.1pg/ml)
+
+
+
+## 第二个 白介素6(0-3.4pg/ml) <2.00 ???
+
+### 白介素10(0-9.10pg/ml) <5 >1000
+
+## 第二个 肿瘤坏死因子α(0-8.1pg/ml) <5.0
+```
+
+
+```{r include=FALSE}
+
+table1_dat <- wkdat %>% select(
+  #"ID",
+  "性别", "年龄", "身高cm", "体重kg", "BMI","体温℃", "收缩压",
+  "舒张压",
+  # "生活习惯",
+  "是否吸烟",
+  "是否饮酒", "KPS评分",
+  # " 主要诊断",
+  "是否肺癌", "上叶", "下叶", "cancer stage（I，II，III，IV）",
+  # "合并基础疾病",
+  "合并基础疾病数量", "既往是否有肺部疾病",
+  "既往或现在是否有自身免疫性疾病",
+  "TMB",
+  # "免疫组化（+）", "PD-L1，PD1", "突变基因型",
+   "免疫药物名称",
+  "免疫药物用法用量mg", "是否首次使用免疫治疗", "免疫单用或联用",
+  # "合并免疫药物用法用量mg",
+  # "免疫治疗开始时间",
+  "疗程（次数）",
+  # "合并其他抗肿瘤治疗方案（化疗药物名称/种类）",
+  "合并其他抗肿瘤药物种类",
+
+  # "合并其他治疗方案（普通药物名称/种类）",
+  "合并普通药物种类",
+  "是否手术(Y/N)", "Prior cancer treatment radiation(Y/N)", "既往是否治疗",
+  # "既往治疗方案",
+
+  "既往治疗药物种类",
+
+  # "不良事件名称", "开始时间", "用药-发生间隔天数", "因果关系", "结局", "是否为SAE", "CTCAE 分级",
+  # "合并其他irAE", "激素治疗是否有效",
+
+######TBD
+
+##有字符，所以需要之后确认
+  "CD4淋巴细胞绝对计数(550-1440×10^6/L)...51",
+  
+  
+  
+  "CD4淋巴细胞百分比（27-51）...52", "CD8淋巴细胞绝对计数(320-1250×10^6/L)...53",
+  "CD8淋巴细胞百分比（15-44）...54", "总T淋巴细胞绝对计数(955-2860×10^6/L)...55",
+  "总T淋巴细胞百分比（50-84）...56", "B淋巴细胞绝对计数( 90-560×10^6/L)...57",
+  "B淋巴细胞百分比（5-18）...58", "NK细胞绝对计数( 150-1100×10^6/L)...59",
+  "NK细胞百分比（7-4）...60", "CD4淋巴细胞绝对计数(550-1440×10^6/L)...61",
+  "CD4淋巴细胞百分比（27-51）...62", "CD8淋巴细胞绝对计数(320-1250×10^6/L)...63",
+  "CD8淋巴细胞百分比（15-44）...64", "总T淋巴细胞绝对计数(955-2860×10^6/L)...65",
+  "总T淋巴细胞百分比（50-84）...66", "B淋巴细胞绝对计数( 90-560×10^6/L)...67",
+  "B淋巴细胞百分比（5-18）...68", "NK细胞绝对计数( 150-1100×10^6/L)...69",
+  "NK细胞百分比（7-4）...70", "白介素2(223-710U/ml)...71", 
+
+###需要确认原始数据处理是否有问题
+"白介素6(0-3.4pg/ml)...72",
+"白介素8(0-62.pg/ml)...73", "白介素10(0-9.10pg/ml)...74", "肿瘤坏死因子α(0-8.1pg/ml)...75",
+  
+"白介素2(223-710U/ml)...76",
+
+###需要确认原始数据处理是否有问题
+"白介素6(0-3.4pg/ml)...77", "白介素8(0-62.pg/ml)...78",
+"白介素10(0-9.10pg/ml)...79", "肿瘤坏死因子α(0-8.1pg/ml)...80",
+  
+
+"红细胞(HR)（4.3-5.8*10^12/L）...81", "血红蛋白(HR) 130-175g/L...82",
+  "白细胞(HR)3.5-9.5*10^9/L...83", "淋巴细胞百分比20-50%...84",
+  "单核细胞百分比3-10...85", "中性粒细胞百分比40-75...86", "嗜酸细胞百分比0.4-8.0...87",
+  "嗜碱细胞百分比 0-1...88", "血小板(HR)125-350*10^9/L...89", "红细胞(HR)（4.3-5.8*10^12/L）...90",
+  "血红蛋白(HR) 130-175g/L...91", "白细胞(HR)3.5-9.5*10^9/L...92",
+  "淋巴细胞百分比20-50%...93", "单核细胞百分比3-10...94", "中性粒细胞百分比40-75...95",
+  "嗜酸细胞百分比0.4-8.0...96", "嗜碱细胞百分比 0-1...97", "血小板(HR)125-350*10^9/L...98",
+  "二氧化碳分压（35.00-45.00 mmHg）...99", "氧分压（80.00-100.00mmHg）...100",
+  "碳酸氢根（21.40-27.30mmol/L）...101", "标准碳酸氢根（21.30-24.80mmol/L）...102",
+  "血氧饱和度...103", "剩余碱...104", "全血乳酸...105", "pH（7.35-7.45）...106",
+  "二氧化碳分压（35.00-45.00 mmHg）...107", "氧分压（80.00-100.00mmHg）...108",
+  "碳酸氢根（21.40-27.30mmol/L）...109", "标准碳酸氢根（21.30-24.80mmol/L）...110",
+  "血氧饱和度...111", "剩余碱...112", "全血乳酸...113", "pH（7.35-7.45）...114",
+  "label"
+)
+
+
+
+table1::table1(~.|label, data = table1_dat)
+
+```
+
+```{r include=FALSE}
+
+var_table <- lapply(table1_dat, typeof) %>% data.frame() %>% t() %>% data.frame() 
+
+var_name =table1_dat %>% colnames()
+num_index =which(var_table$.=='double')
+
+var_name[num_index[1:length(num_index)-1]] %>% dput()
+
+num_vars  =c("年龄", "身高cm", "体重kg","BMI", "体温℃", "收缩压", "舒张压", "KPS评分", 
+"TMB", "免疫药物用法用量mg", "疗程（次数）","CD4淋巴细胞绝对计数(550-1440×10^6/L)...51", "CD4淋巴细胞百分比（27-51）...52", 
+"CD8淋巴细胞绝对计数(320-1250×10^6/L)...53", "CD8淋巴细胞百分比（15-44）...54", 
+"总T淋巴细胞绝对计数(955-2860×10^6/L)...55", "总T淋巴细胞百分比（50-84）...56", 
+"B淋巴细胞绝对计数( 90-560×10^6/L)...57", "B淋巴细胞百分比（5-18）...58", 
+"NK细胞绝对计数( 150-1100×10^6/L)...59", "NK细胞百分比（7-4）...60", 
+"CD4淋巴细胞绝对计数(550-1440×10^6/L)...61", "CD4淋巴细胞百分比（27-51）...62", 
+"CD8淋巴细胞绝对计数(320-1250×10^6/L)...63", "CD8淋巴细胞百分比（15-44）...64", 
+"总T淋巴细胞绝对计数(955-2860×10^6/L)...65", "总T淋巴细胞百分比（50-84）...66", 
+"B淋巴细胞绝对计数( 90-560×10^6/L)...67", "B淋巴细胞百分比（5-18）...68", 
+"NK细胞绝对计数( 150-1100×10^6/L)...69", "NK细胞百分比（7-4）...70", 
+"白介素2(223-710U/ml)...71", "白介素6(0-3.4pg/ml)...72", "白介素8(0-62.pg/ml)...73", 
+"白介素10(0-9.10pg/ml)...74", "肿瘤坏死因子α(0-8.1pg/ml)...75", 
+"白介素2(223-710U/ml)...76", "白介素6(0-3.4pg/ml)...77", "白介素8(0-62.pg/ml)...78", 
+"白介素10(0-9.10pg/ml)...79", "肿瘤坏死因子α(0-8.1pg/ml)...80", 
+"红细胞(HR)（4.3-5.8*10^12/L）...81", "血红蛋白(HR) 130-175g/L...82", 
+"白细胞(HR)3.5-9.5*10^9/L...83", "淋巴细胞百分比20-50%...84", 
+"单核细胞百分比3-10...85", "中性粒细胞百分比40-75...86", "嗜酸细胞百分比0.4-8.0...87", 
+"嗜碱细胞百分比 0-1...88", "血小板(HR)125-350*10^9/L...89", "红细胞(HR)（4.3-5.8*10^12/L）...90", 
+"血红蛋白(HR) 130-175g/L...91", "白细胞(HR)3.5-9.5*10^9/L...92", 
+"淋巴细胞百分比20-50%...93", "单核细胞百分比3-10...94", "中性粒细胞百分比40-75...95", 
+"嗜酸细胞百分比0.4-8.0...96", "嗜碱细胞百分比 0-1...97", "血小板(HR)125-350*10^9/L...98", 
+"二氧化碳分压（35.00-45.00 mmHg）...99", "氧分压（80.00-100.00mmHg）...100", 
+"碳酸氢根（21.40-27.30mmol/L）...101", "标准碳酸氢根（21.30-24.80mmol/L）...102", 
+"血氧饱和度...103", "剩余碱...104", "全血乳酸...105", "pH（7.35-7.45）...106", 
+"二氧化碳分压（35.00-45.00 mmHg）...107", "氧分压（80.00-100.00mmHg）...108", 
+"碳酸氢根（21.40-27.30mmol/L）...109", "标准碳酸氢根（21.30-24.80mmol/L）...110", 
+"血氧饱和度...111", "剩余碱...112", "全血乳酸...113")
+
+factor_index = which(var_table$.=='character')
+var_name[factor_index] %>% dput()
+
+factor_vars = c("性别", "是否吸烟", "是否饮酒", "是否肺癌", "上叶", "下叶", 
+"cancer stage（I，II，III，IV）", "合并基础疾病数量", "既往是否有肺部疾病", 
+"既往或现在是否有自身免疫性疾病", "是否首次使用免疫治疗","免疫药物名称", "免疫单用或联用", 
+"合并其他抗肿瘤药物种类", "合并普通药物种类", "是否手术(Y/N)", 
+"Prior cancer treatment radiation(Y/N)", "既往是否治疗", "既往治疗药物种类"
+)
+
+table1_dat %>% colnames() %>% dput()
+
+vars = c("性别", "年龄", "身高cm", "体重kg","BMI", "体温℃", "收缩压", "舒张压", 
+"是否吸烟", "是否饮酒", "KPS评分", "是否肺癌", "上叶", "下叶", 
+"cancer stage（I，II，III，IV）", "合并基础疾病数量", "既往是否有肺部疾病", 
+"既往或现在是否有自身免疫性疾病", "TMB","免疫药物名称", "免疫药物用法用量mg", 
+"是否首次使用免疫治疗", "免疫单用或联用", "疗程（次数）", "合并其他抗肿瘤药物种类", 
+"合并普通药物种类", "是否手术(Y/N)", "Prior cancer treatment radiation(Y/N)", 
+"既往是否治疗", "既往治疗药物种类", "CD4淋巴细胞百分比（27-51）...52", "CD4淋巴细胞绝对计数(550-1440×10^6/L)...51",
+"CD8淋巴细胞绝对计数(320-1250×10^6/L)...53", "CD8淋巴细胞百分比（15-44）...54", 
+"总T淋巴细胞绝对计数(955-2860×10^6/L)...55", "总T淋巴细胞百分比（50-84）...56", 
+"B淋巴细胞绝对计数( 90-560×10^6/L)...57", "B淋巴细胞百分比（5-18）...58", 
+"NK细胞绝对计数( 150-1100×10^6/L)...59", "NK细胞百分比（7-4）...60", 
+"CD4淋巴细胞绝对计数(550-1440×10^6/L)...61", "CD4淋巴细胞百分比（27-51）...62", 
+"CD8淋巴细胞绝对计数(320-1250×10^6/L)...63", "CD8淋巴细胞百分比（15-44）...64", 
+"总T淋巴细胞绝对计数(955-2860×10^6/L)...65", "总T淋巴细胞百分比（50-84）...66", 
+"B淋巴细胞绝对计数( 90-560×10^6/L)...67", "B淋巴细胞百分比（5-18）...68", 
+"NK细胞绝对计数( 150-1100×10^6/L)...69", "NK细胞百分比（7-4）...70", 
+"白介素2(223-710U/ml)...71", "白介素6(0-3.4pg/ml)...72", "白介素8(0-62.pg/ml)...73", 
+"白介素10(0-9.10pg/ml)...74", "肿瘤坏死因子α(0-8.1pg/ml)...75", 
+"白介素2(223-710U/ml)...76", "白介素6(0-3.4pg/ml)...77", "白介素8(0-62.pg/ml)...78", 
+"白介素10(0-9.10pg/ml)...79", "肿瘤坏死因子α(0-8.1pg/ml)...80", 
+"红细胞(HR)（4.3-5.8*10^12/L）...81", "血红蛋白(HR) 130-175g/L...82", 
+"白细胞(HR)3.5-9.5*10^9/L...83", "淋巴细胞百分比20-50%...84", 
+"单核细胞百分比3-10...85", "中性粒细胞百分比40-75...86", "嗜酸细胞百分比0.4-8.0...87", 
+"嗜碱细胞百分比 0-1...88", "血小板(HR)125-350*10^9/L...89", "红细胞(HR)（4.3-5.8*10^12/L）...90", 
+"血红蛋白(HR) 130-175g/L...91", "白细胞(HR)3.5-9.5*10^9/L...92", 
+"淋巴细胞百分比20-50%...93", "单核细胞百分比3-10...94", "中性粒细胞百分比40-75...95", 
+"嗜酸细胞百分比0.4-8.0...96", "嗜碱细胞百分比 0-1...97", "血小板(HR)125-350*10^9/L...98", 
+"二氧化碳分压（35.00-45.00 mmHg）...99", "氧分压（80.00-100.00mmHg）...100", 
+"碳酸氢根（21.40-27.30mmol/L）...101", "标准碳酸氢根（21.30-24.80mmol/L）...102", 
+"血氧饱和度...103", "剩余碱...104", "全血乳酸...105", "pH（7.35-7.45）...106", 
+"二氧化碳分压（35.00-45.00 mmHg）...107", "氧分压（80.00-100.00mmHg）...108", 
+"碳酸氢根（21.40-27.30mmol/L）...109", "标准碳酸氢根（21.30-24.80mmol/L）...110", 
+"血氧饱和度...111", "剩余碱...112", "全血乳酸...113", "pH（7.35-7.45）...114", 
+"label")
+```
+
+
+# Missing
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+library(naniar)
+miss <- miss_var_summary(table1_dat) %>%
+  mutate(pct_miss = round(pct_miss, 2)) %>%
+  filter(pct_miss > 0)
+
+DT::datatable(miss,
+  filter = "top", editable = "cell", extensions = "Buttons",
+  options = list(
+    dom = "Blfrtip",
+    scrollX = TRUE,
+    buttons = c("copy", "csv", "excel", "pdf", "print"),
+    lengthMenu = list(
+      c(5, 25, 50, 100, -1),
+      c(5, 25, 50, 100, "All")
+    )
+  )
+)
+```
+
+# EDA
+
+下图为数据集的基本情况，其中离散型变量占到约62%，连续型变量占238%。有19.2%的患者存在缺失数据。
+
+```{r include=FALSE}
+library(DataExplorer)
+```
+
+变量的分布情况和（连续）变量的概率密度分布如下：
+
+```{r}
+### supplemental materials
+
+
+supplemental1 <- apply(supplemental, 2, as.factor) %>% data.frame()
+colnames(supplemental1) <- c('Number of underlying diseases','Number of other antitumor drugs','Number of non-antitumor drugs','Number of previous antitumor drugs')
+
+supplemental <- table1_dat[,c(16,25,26,30)]
+res <- list()
+for(i in c(1:ncol(supplemental))){
+  
+  supp_names <-  c('Number of underlying diseases','Number of other antitumor drugs','Number of non-antitumor drugs','Number of previous antitumor drugs')
+  tmp <- supplemental[,i]
+  
+  tmp1 <- na.omit(tmp)
+  
+  tmp2 <- apply(tmp1,2,as.factor)
+  
+  res[[i]] <- tmp2 %>%  ggplot(aes(x = fct_infreq(tmp2[,1]))) +
+  geom_bar() + labs(x = supp_names[i], y='Frequency')
+
+}
+
+i = 1
+
+ tmp <- supplemental[,i]
+  
+  tmp1 <- na.omit(tmp)
+  
+  tmp2 <- apply(tmp1,2,as.factor)
+  
+ g1 <- tmp2 %>%  ggplot(aes(x = fct_infreq(tmp2[,1]))) +
+  geom_bar() + labs(x = supp_names[i], y='Frequency')
+
+
+
+
+fct_infreq
+
+library(forcats)
+
+
+
+
+
+
+
+ 
+  ggplot(aes(x = fct_infreq(
+    supplemental1[,1])
+ )) +
+  geom_bar() +
+  labs(x = "group")+
+  coord_flip()
+
+
+`Number of previous antitumor drugs` = supplemental$既往治疗药物种类
+
+```
+
+
+```{r}
+plot_histogram(table1_dat)
+
+plot_density(table1_dat)
+```
+
+
+
+
+```{r}
+t1_f <- function(dat = workdat1,
+                 vars = vars,
+                 num_vars = num_vars,
+                 factor_vars= factor_vars,
+                 showlevel_p=T,
+                 strata=strata,...){
+  
+  
+  
+  ### data type character, factor and numeric, you need to specify the data types before run the t1_f
+  
+  
+  
+  #dat_new <- dat1[ ,colSums(is.na(dat1)) <nrow(dat1)]  ## remove the columns with only NAs
+  
+  #vars <-  dput(c(dput(colnames(dat_new[sapply(dat_new,is.factor)])),dput(colnames(dat_new[sapply(dat_new, is.numeric)]))))
+  
+  #factor_vars <- dput(colnames(dat_new[sapply(dat_new, is.factor)]))
+  
+  
+  #num_vars <- dput(colnames(dat_new[sapply(dat_new, is.numeric)]))## not null num vars
+  
+  
+  ## nonnorm variables
+  # nonnorm_vars <- sapply(dat_new[num_vars],shapiro.test) %>% t() %>% data.frame() %>%
+  # mutate(var_names = num_vars) %>% select(-data.name) %>% filter(p.value<0.05) 
+  # nonnorm_vars <- dput(nonnorm_vars$var_names)
+  
+  
+  
+  t1_temp <- CreateTableOne2(data = dat,
+                             strata = strata,
+                             vars = vars,
+                             factorVars = factor_vars,
+                             includeNA = F,
+                             showAllLevels = showlevel_p,
+                             Labels = T,
+                             # exact = factor_vars,
+                             #nonnormal = num_vars,
+                             catDigits = 1,
+                             contDigits = 2,
+                             pDigits = 3,
+  )
+  t1_temp 
+}
+
+```
+
+# Table one
+```{r}
+strata='label'
+t1_output <- t1_f(dat = table1_dat,
+                 vars = vars,
+                 num_vars = num_vars,
+                 factor_vars= factor_vars,
+                 showlevel_p=T,
+                 strata=strata)
+
+t1_output <- t1_f(dat = dat ,
+                 vars = vars,
+                 factor_vars= factor_v,
+                 showlevel_p=T,
+                 strata=strata)
+
+DT::datatable(t1_output,
+  filter = "top", editable = "cell", extensions = "Buttons",
+  options = list(
+    dom = "Blfrtip",
+    scrollX = TRUE,
+    buttons = c("copy", "csv", "excel", "pdf", "print"),
+    lengthMenu = list(
+      c(5, 25, 50, 100, -1),
+      c(5, 25, 50, 100, "All")
+    )
+  )
+)
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+miss_tmp <- miss_var_summary(table1_dat) %>%
+  mutate(pct_miss = round(pct_miss, 2))
+miss_25_vars <- miss_tmp[miss_tmp$pct_miss<25,]$variable
+
+t1_output_tmp <- t1_output %>% data.frame()
+
+t1_output_tmp$var_name = rownames(t1_output)
+
+t1_output_tmp <- t1_output_tmp %>% 
+  mutate(p1 = ifelse(p=="<0.001",'0.001',p) %>% as.numeric())
+
+
+
+t1_output_tmp <- t1_output_tmp %>% 
+  mutate(var_name=gsub("median|%|\\[|\\]|IQR|\\(|\\)| ", '',var_name)) %>% filter(var_name!='label') 
+  
+ 
+table1_dat %>% colnames() %in% miss_20_vars
+
+model_dat0302 <- table1_dat[table1_dat %>% colnames() %in% miss_20_vars]
+
+
+
+t1_sig =t1_output_tmp[which(t1_output_tmp$p1 <0.3),]
+
+t1_sig <- t1_sig %>% slice(c(1:nrow(t1_sig)-1))
+
+t1_sig_vars = t1_sig$var_name
+
+
+overlap_index = which((t1_sig_vars %in% miss_25_vars))
+
+overlap_table1 <- tmp[overlap_index1,]
+overlap_table2 <- overlap_table1[-3,]
+
+overlap_table <- t1_sig[overlap_index,]
+
+num_table1_dat <- table1_dat[,num_index]
+
+factor_table1_dat <- table1_dat[,factor_index]
+
+kept_num_cols =  num_table1_dat[,which(colnames(num_table1_dat) %in% overlap_table$var_name)]
+
+kept_factor_cols = factor_table1_dat[,which(colnames(factor_table1_dat) %in% overlap_table$var_name)]
+
+num_cor_output <- na.omit(kept_num_cols) %>% cor() %>% data.frame()
+
+#install.packages("rcompanion")
+#library(rcompanion)
+
+###categorical variable correlation?
+
+#factor_cor_output <- na.omit(kept_factor_cols) %>% cramerV() %>% data.frame()
+
+colnames(num_cor_output) <- rownames(num_cor_output)
+
+export(num_cor_output,file = "data/num_cor_output.xlsx")
+
+
+
+#miss_25_vars[( miss_25_vars %in% t1_sig_vars)]
+```
+
+```{r eval=FALSE, include=FALSE}
+overlap_table_show = overlap_table
+rownames(overlap_table_show)=NULL
+
+overlap_table_show
+```
+
+
+#Model
+
+中值填补，得到数据集
+
+```{r eval=FALSE, include=FALSE}
+#overlap_table$var_name
+model_dat <- table1_dat[,which(colnames(table1_dat) %in% overlap_table$var_name)]
+
+
+model_dat0302
+model_miss <- miss_var_summary(model_dat) %>%
+  mutate(pct_miss = round(pct_miss, 2)) %>%
+  filter(pct_miss > 0)
+
+
+
+####median imputation
+
+
+  fillmedian_f  <- function(x){
+   x<-as.numeric(x) #first convert each column into numeric if it is from factor
+   x[is.na(x)] =median(x, na.rm=TRUE) #convert the item with NA to median value from the column
+   x = as.numeric(x)#display the column
+}
+
+  
+
+
+
+# this is the column index for numeric variables in model_dat
+#which(colnames(model_dat) %in% colnames(kept_num_cols))
+model_dat_tmp <- as.matrix(model_dat)
+
+  for(i in which(colnames(model_dat1) %in% kept_num_cols)){
+ model_dat1[,i] <-  fillmedian_f(model_dat_tmp[,i])
+  }
+
+  for(i in which(colnames(model_dat1) %in% kept_factor_cols)){
+ model_dat1_0302[,i] <-  Mode(model_dat_tmp[,i])
+  }
+
+model_dat1
+
+
+#median_impute_model_dat=data.frame(apply(df,2,f))
+model_dat1 = model_dat_tmp %>% as.data.frame()
+
+
+
+kept_num_cols <-c( "年龄", "身高cm", "体重kg", "BMI", "体温℃", "收缩压", 
+"舒张压",    
+"免疫药物用法用量mg", 
+"疗程（次数）", "CD4淋巴细胞绝对计数(550-1440×10^6/L)...61", 
+"CD4淋巴细胞百分比（27-51）...62", "CD8淋巴细胞绝对计数(320-1250×10^6/L)...63", 
+"CD8淋巴细胞百分比（15-44）...64", "总T淋巴细胞绝对计数(955-2860×10^6/L)...65", 
+"总T淋巴细胞百分比（50-84）...66", "B淋巴细胞绝对计数( 90-560×10^6/L)...67", 
+"B淋巴细胞百分比（5-18）...68", "NK细胞绝对计数( 150-1100×10^6/L)...69", 
+"NK细胞百分比（7-4）...70", "红细胞(HR)（4.3-5.8*10^12/L）...81", 
+"血红蛋白(HR) 130-175g/L...82", "白细胞(HR)3.5-9.5*10^9/L...83", 
+"淋巴细胞百分比20-50%...84", "单核细胞百分比3-10...85", "中性粒细胞百分比40-75...86", 
+"嗜酸细胞百分比0.4-8.0...87", "嗜碱细胞百分比 0-1...88", "血小板(HR)125-350*10^9/L...89", 
+"红细胞(HR)（4.3-5.8*10^12/L）...90", "血红蛋白(HR) 130-175g/L...91", 
+"白细胞(HR)3.5-9.5*10^9/L...92", "淋巴细胞百分比20-50%...93", 
+"单核细胞百分比3-10...94", "中性粒细胞百分比40-75...95", "嗜酸细胞百分比0.4-8.0...96", 
+"嗜碱细胞百分比 0-1...97", "血小板(HR)125-350*10^9/L...98", "label"
+)
+
+
+kept_factor_cols <- c("性别","是否吸烟", "是否饮酒", "KPS评分", "是否肺癌", "上叶", 
+"下叶", "cancer stage（I，II，III，IV）","合并基础疾病数量", 
+"既往是否有肺部疾病", "既往或现在是否有自身免疫性疾病", "免疫药物名称",
+"是否首次使用免疫治疗", "免疫单用或联用",  "合并其他抗肿瘤药物种类", "合并普通药物种类", 
+"是否手术(Y/N)", "Prior cancer treatment radiation(Y/N)", "既往是否治疗", 
+"既往治疗药物种类")
+
+ for(i in which(colnames(model_dat) %in% kept_num_cols)){
+ model_dat1[,i] <-  as.numeric(model_dat1[,i])
+ }
+model_dat1$label <- as.factor(table1_dat$label)
+
+for(i in which(colnames(model_dat) %in% kept_factor_cols)){
+ model_dat1_0302[,i] <-  as.factor(model_dat1[,i])
+}
+
+export(model_dat1,file = 'data/model_dat0302.xlsx')
+
+model_dat1_0302 <- read_excel("data/model_dat1_0302.xlsx")
+
+save(model_dat1_0302,file = 'data/model_dat1_0302.rdata')
+
+Mode <- function(x) {
+  ux <- unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+library(caret)
+
+kept_factor_cols_new <- model_dat1[,which(colnames(model_dat) %in% colnames(kept_factor_cols))]
+
+
+
+
+dummy_tmp <- dummyVars(~.,data = kept_factor_cols_new)
+
+dummy_dat <- predict(dummy_tmp,kept_factor_cols_new) %>% data.frame()
+
+# cbind numeric variables and dummy variables; without label 
+model_dat2 <- cbind(model_dat1[,which(colnames(model_dat) %in% colnames(kept_num_cols))],
+dummy_dat)
+
+
+```
+
+
+# Fit
+```{r eval=FALSE, include=FALSE}
+## strategy 1: include all variables
+##先浅浅地做一个逻辑回归把
+  
+outcome = model_dat1 %>% select(label) 
+
+outcome01 <- c(0,1)
+
+outcome_label <- outcome01[outcome$label]
+
+
+
+x_matrices <- glmnet::makeX(train = model_dat2)
+
+x_matrices <- glmnet::makeX(train = model_dat1 %>% select(-label))
+                            #test = test[, !names(test) == "SalePrice"]
+                            
+library(glmnet)
+lasso_model <- glmnet(x_matrices,
+                      outcome_label,
+                      alpha=1,
+                      family = binomial
+    )
+
+
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+set.seed(20221028)
+
+fit_cv <- cv.glmnet(x_matrices,outcome_label,alpha=1,
+          family = 'binomial',
+          type.measure = 'auc')
+
+plot(fit_cv)
+
+best_lambda <- fit_cv$lambda.min
+
+best_model <- glmnet(x_matrices,outcome_label,alpha=1,
+          family = 'binomial',
+          lambda = best_lambda)
+
+best_model$beta
+
+tmp <- predict(best_model,s=best_lambda,newx = x_matrices,type = 'response') %>% data.frame()
+
+
+tmp$outcome_label = outcome_label
+
+
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+# log(fit_cv$lambda.min)=-3.67
+get_coe <- function(the_fit,the_lamb){
+  Coefficients <- coef(the_fit, s = the_lamb)
+  Active.Index <- which(Coefficients != 0)
+  Active.Coefficients <- Coefficients[Active.Index]
+  re <- data.frame(rownames(Coefficients)[Active.Index],Active.Coefficients)
+  re <- data.table('var_names'=rownames(Coefficients)[Active.Index],
+                   'coef'=Active.Coefficients)
+  # 计算系数的指数次方，表示x每变动一个单位对y的影响倍数
+  re$expcoef <- exp(re$coef)
+  return(re[order(expcoef)])
+}
+
+```
+
+```{r eval=FALSE, include=FALSE}
+library(data.table)
+coe_table <- get_coe(fit_cv,best_lambda)
+
+
+coe_table1 <- coe_table %>% data.frame()
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+fit_cv1 <- cv.glmnet(x_matrices,outcome_label,alpha=1,
+          family = 'binomial',
+          type.measure = 'mse')
+
+plot(fit_cv1)
+
+best_lambda1 <- fit_cv1$lambda.min
+
+best_model1 <- glmnet(x_matrices,outcome_label,alpha=1,
+          family = 'binomial',
+          lambda = best_lambda1)
+```
+
+
+```{r}
+# logit_model <- glm(label~.,
+#     data=model_dat1,
+#     family = binomial
+#     )
+# 
+# coef_table <- summary(logit_model) 
+# 
+# 
+# 
+# pacman::p_load(broom)#augment_column
+# fitted_dat <- augment_columns(
+#   logit_model,#model
+#   model_dat1,  # original data
+#   type.predict="response" # type of the prediction
+#   )
+# 
+# library(car)
+# vif_values <- vif(logit_model) %>% data.frame()
+# 
+# 
+# library(pROC)
+# 
+# 
+# auc(fitted_dat$label,fitted_dat$.fitted) 
+# 
+# roc_values <- roc(fitted_dat$label,fitted_dat$.fitted)
+# 
+# roc_values %>% plot()
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+logit_model <- glm(label~`嗜酸细胞百分比0.4-8.0...96`,
+    data=model_dat1,
+    family = binomial
+    )
+
+coef_table <- summary(logit_model)
+
+coef_table_1var <- coef_table$coefficients %>% data.frame()
+
+
+
+pacman::p_load(broom)#augment_column
+fitted_dat <- augment_columns(
+  logit_model,#model
+  model_dat1,  # original data
+  type.predict="response" # type of the prediction
+  )
+
+library(car)
+vif_values <- vif(logit_model) %>% data.frame()
+
+
+library(pROC)
+
+
+auc(fitted_dat$label,fitted_dat$.fitted)
+
+roc_values <- roc(fitted_dat$label,fitted_dat$.fitted)
+
+roc_values %>% plot()
+
+```
+
+# caret
+
+
+```{r eval=FALSE, include=FALSE}
+library(AppliedPredictiveModeling)
+transparentTheme(trans = .4)
+library(caret)
+
+model_dat3 <- model_dat2 %>% mutate()
+
+num_yn <- lapply(model_dat1, function(x) is.numeric(x)) %>% unlist()
+
+num_dat <- model_dat1[, num_yn]
+
+### model_dat1 includes num and factor variables
+featurePlot(x = num_dat[,1:2], 
+            y = model_dat1$label, 
+            plot = "paris",
+            ## Add a key at the top
+            auto.key = list(columns = 1))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+featurePlot(x = num_dat, 
+            y = model_dat1$label, 
+            plot = "density", 
+            ## Pass in options to xyplot() to 
+            ## make it prettier
+            scales = list(x = list(relation="free"), 
+                          y = list(relation="free")), 
+            adjust = 1.5, 
+            pch = "|", 
+            layout = c(4, 1), 
+            auto.key = list(columns = 3))
+```
+
+
+```{r}
+final_lr
+```
+
+
+#1110
+
+```{r eval=FALSE, include=FALSE}
+
+
+library(pROC)
+roc_values <- roc(predictioin_out$outcome,predictioin_out$lr)
+
+roc_values <- roc(predictioin_out$outcome,predictioin_out$rf)
+
+roc_values <- roc(predictioin_out$outcome,predictioin_out$gbc)
+
+roc_values <- roc(predictioin_out$outcome,predictioin_out$et)
+
+roc_values %>% plot()
+```
+
+
+```{r}
+model_dat1_0302$label <- model_dat1_0302$label %>% as.factor()
+```
+

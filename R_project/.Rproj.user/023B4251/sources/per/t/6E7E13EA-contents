@@ -1,0 +1,23 @@
+# Tune and build model
+
+```{r glmnet, message=FALSE, warning=FALSE}
+
+twoClassCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 3,
+  repeats = 10, #for repeatedcv
+  savePredictions = "final",
+  classProbs = T,
+  summaryFunction = BigSummary, 
+  sampling = "up"
+)
+
+set.seed(355)
+glmnet_m <- train(outcome ~., data = trainingSet1, method = "glmnet",  metric = objectives,  trControl = twoClassCtrl, tuneLength = 20)
+
+rf_m <- train(outcome ~., data = trainingSet1, method = "rf",  metric = objectives,  trControl = twoClassCtrl, tuneLength = 10)
+
+xgb_m <- train(outcome ~., data = trainingSet1, method = "xgbTree",  metric = objectives,  trControl = twoClassCtrl)
+```
+
+

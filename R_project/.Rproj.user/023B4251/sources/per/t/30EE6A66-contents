@@ -1,0 +1,355 @@
+---
+title: "IPTW0727"
+author: "Lin Yu"
+date: "2022/7/27"
+# subtitle:
+output:
+  rmdformats::readthedown:
+  fig_width: 8
+  fig_height: 5
+  fig_caption: TRUE
+  highlight: "kate"
+  lightbox: FALSE
+  thumbnails: FALSE
+  gallery: FALSE
+  toc_depth: 3
+  embed_fonts: TRUE
+  number_sections: yes
+  use_bookdown: TRUE
+  css: styles.css
+  # highlight: tango
+  # self_contained: true
+  # code_folding: hide
+  # thumbnails: true
+  # gallery: false
+  # fig_width: 4
+  # fig_height: 4
+  # toc_depth: 4
+  # df_print: kable
+  # fig_caption: yes
+  # use_bookdown: true
+  # number_sections: yes
+  # toc: yes
+# output:
+#   html_document:
+#     code_folding: hide              
+#     toc: yes              
+#     toc_float: yes      
+#     df_print: paged #print paged tables   kable    
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = FALSE,
+	message = FALSE,
+	warning = FALSE
+)
+source("code/lib_helper.R")
+```
+# 0. Overview
+```{r}
+library(haven)
+create3 <- read_sas("data/create3.sas7bdat",NULL)
+```
+
+我们分别使用传统的IPW和stabilized IPW两种方式进行逆加权，其中stabilized IPW 是为了减少极端weighting值:
+
+> In the traditional IPTW, the sample size of the pseudo population is double the size of the original data. Consequently, regression estimates with the pseudo population tend to reject the null hypothesis too frequently because of the inflated sample sizes.
+
+> The purpose of using stabilized weighting(SW) in these studies is to reduce the weights of either those treated subjects with low propensity scores or those untreated subjects with high propensity scores
+
+参考文献有：
+
+- [Use of stabilized inverse propensity scores as weights to directly estimate relative risk and its confidence intervals](https://pubmed.ncbi.nlm.nih.gov/19912596/) 
+(`r xfun::embed_file("paper/sipw.pdf")`)
+
+- [倾向性评分方法及其规范化应用的统计学共识](http://zgwstj.paperonce.org/oa/darticle.aspx?type=view&id=202009046)
+(`r xfun::embed_file("paper/expert consensus.pdf")`)
+
+我们的思路如下：
+
+step 1: 暴露因素group为二分类变量，故先建立一个二分类的逻辑回归, conceptual model 为 log(group) \~ alpha+beta\*covariates，
+
+这里的covariates可以考虑纳入之前建模中纳入的covariates? 或者是根据临床经验选择的covariates， interaction等
+
+至此，找到每个individual的weight step 2: check the balance of covariates in two comparison groups step 3: 再用weighted samples 进行建模
+
+在step 1中，我们计划使用之前影响因素分析中较为显著的变量进行IPW的计算
+
+![](images/lQLPJxaIr0LoU5fNAezNA9qwTSDxdjSfv0IC4QKn90BCAA_986_492.png)
+
+暴露因素的分布如下：
+```{r}
+create3$group %>% table()
+```
+
+# 1. live birth
+
+## 1.1 计算IPTW
+```{r}
+model_livebirth <- glm(group ~ age_35 + history_abo + VAR60+IVF_No+
+                         as.factor(COS_pro)+VAR38+VAR42+VAR44+VAR51,
+                 data = create3,
+                 family = binomial(link = "logit"))
+# tidy(model_net, exponentiate = TRUE)
+pacman::p_load(broom)#augment_column
+livebrith_probabilities <- augment_columns(
+  model_livebirth,#model
+  create3,  # original data
+  type.predict="response" # type of the prediction
+  ) %>% 
+  rename(propensity = .fitted)
+# livebrith_probabilities %>% 
+#   select(age_35, history_abo ,VAR60,IVF_No,
+#                          COS_pro,VAR38,VAR42,VAR44,VAR51, propensity) %>%  DT::datatable( filter='top', editable = 'cell',extensions = 'Buttons',
+#                   options = list(dom = 'Blfrtip',
+#                                  scrollX = TRUE,
+#                                  buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+#                                  lengthMenu = list(c(5,25,50,100,-1),
+#                                                    c(5,25,50,100,"All"))))
+```
+
+
+```{r}
+livebirth_ipw <- livebrith_probabilities %>%
+  mutate(ipw = (group / propensity) + ((1 - group) / (1 - propensity)),
+         p_value = ifelse(VAR4==1, sum(group)/nrow(.),1-sum(group)/nrow(.)),
+         sipw = p_value*(group / propensity) + (p_value*(1 - group) / (1 - propensity)),
+         diff_ipw_sipw = ipw-sipw
+           )
+# Look at the first few rows of a few columns
+livebirth_ipw %>% 
+  select(id,propensity,ipw,sipw,diff_ipw_sipw,age_35, history_abo ,VAR60,IVF_No,
+                         COS_pro,VAR38,VAR42,VAR44,VAR51, ) %>% DT::datatable( filter='top', editable = 'cell',extensions = 'Buttons',
+                  options = list(dom = 'Blfrtip',
+                                 scrollX = TRUE,
+                                 buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+                                 lengthMenu = list(c(5,25,50,100,-1),
+                                                   c(5,25,50,100,"All"))))
+
+```
+
+匹配后两组的weighted sample的分布为：
+```{r}
+original_sample <- livebirth_ipw %>% 
+  group_by(group) %>% 
+ summarise(orignal_n = n())
+
+ipw_sample <- livebirth_ipw %>% group_by(group) %>% 
+  summarise(ipw_n = sum(ipw) %>% round(2))
+
+sipw_sample <- livebirth_ipw %>% group_by(group) %>% 
+  summarise(sipw_n = sum(sipw)%>% round(2))
+
+sample_allinone <-data.frame(original_sample,
+                             ipw_sample[,2],
+                             sipw_sample[,2])
+
+
+sample_tmp <- rbind(sample_allinone,
+      c("ALL",apply(sample_allinone[,-1],2,sum) ))
+
+outcome_name <- rep('live birth',3)
+
+sample_1 <- cbind(sample_tmp,outcome_name)
+
+
+```
+
+
+
+## 1.2 比较unweighted 和weighted SMD
+
+
+```{r}
+pacman::p_load(tableone)# svyCreateTableOne
+pacman::p_load(survey)#svydesign
+
+sdm_dat_weighted <- svydesign(ids = ~ id, strata = ~ group, weights = ~ ipw, nest = FALSE, data = livebirth_ipw)
+
+sdm_dat_sweighted <- svydesign(ids = ~ id, strata = ~ group, weights = ~ sipw, nest = FALSE, data = livebirth_ipw)
+
+
+sdm_dat_unweighted <- svydesign(ids = ~ id, strata = ~ group, weights = ~ 1, nest = FALSE, data = livebirth_ipw)
+
+tabWeighted <- svyCreateTableOne(vars = c('age_35', 'history_abo' ,'VAR60','IVF_No', 'COS_pro','VAR38','VAR42','VAR44','VAR51'), strata = "group", data =sdm_dat_weighted, test = FALSE)
+
+tabsWeighted <- svyCreateTableOne(vars = c('age_35', 'history_abo' ,'VAR60','IVF_No', 'COS_pro','VAR38','VAR42','VAR44','VAR51'), strata = "group", data =sdm_dat_sweighted, test = FALSE)
+
+tabunweighted <- svyCreateTableOne(vars = c('age_35', 'history_abo' ,'VAR60','IVF_No', 'COS_pro','VAR38','VAR42','VAR44','VAR51'), strata = "group", data =sdm_dat_unweighted , test = FALSE)
+```
+
+### unweighted SMD 如下：
+```{r}
+print(tabunweighted, smd = TRUE)
+```
+
+### weighted SMD如下：
+```{r}
+print(tabWeighted, smd = TRUE)
+```
+
+### stabilized weighted SMD 如下：
+
+```{r}
+print(tabsWeighted, smd = TRUE)
+```
+
+### PS score在两组的分布
+
+绿色为group=1, 紫色为group=0
+
+#### weighted
+```{r}
+net_ipw_new <- livebirth_ipw %>% mutate( 
+  ipw2= ((propensity * group) / propensity) + 
+      ((propensity * (1 - group) / (1 - propensity))),
+  ipw3 = (((1 - propensity) * group) / propensity) + 
+      (((1 - propensity) * (1 - group)) / (1 - propensity)),
+  ipw4 = pmin(propensity, 1 - propensity) / 
+      (group * propensity + (1 - group) * (1 - propensity)),
+  ipw5 = (1 - propensity) * group + 
+      propensity * (1 - group)
+)
+
+
+d <- net_ipw_new %>%
+  tidyr::spread(group, propensity, sep = "_")
+pacman::p_load(ggplot2)
+
+ ggplot(d) +
+  geom_histogram(bins = 50, aes(group_1), alpha = 1) + 
+  geom_histogram(bins = 50, aes(group_1, weight = ipw), fill = "green", alpha = 0.5) + 
+  geom_histogram(bins = 50, alpha = 0.5, aes(x = group_0, y = -..count..)) + 
+  geom_histogram(bins = 50, aes(x = group_0, weight = ipw, y = -..count..), fill = "blue", alpha = 0.5) + 
+  ylab("count") + xlab("p") +
+  geom_hline(yintercept = 0, lwd = 0.5) +
+  scale_y_continuous(label = abs) 
+```
+
+#### sweighted 
+
+
+```{r}
+net_ipw_new <- livebirth_ipw %>% mutate( 
+  ipw2= ((propensity * group) / propensity) + 
+      ((propensity * (1 - group) / (1 - propensity))),
+  ipw3 = (((1 - propensity) * group) / propensity) + 
+      (((1 - propensity) * (1 - group)) / (1 - propensity)),
+  ipw4 = pmin(propensity, 1 - propensity) / 
+      (group * propensity + (1 - group) * (1 - propensity)),
+  ipw5 = (1 - propensity) * group + 
+      propensity * (1 - group)
+)
+
+
+d <- net_ipw_new %>%
+  tidyr::spread(group, propensity, sep = "_")
+pacman::p_load(ggplot2)
+
+ ggplot(d) +
+  geom_histogram(bins = 50, aes(group_1), alpha = 1) + 
+  geom_histogram(bins = 50, aes(group_1, weight = sipw), fill = "green", alpha = 0.5) + 
+  geom_histogram(bins = 50, alpha = 0.5, aes(x = group_0, y = -..count..)) + 
+  geom_histogram(bins = 50, aes(x = group_0, weight = sipw, y = -..count..), fill = "blue", alpha = 0.5) + 
+  ylab("count") + xlab("p") +
+  geom_hline(yintercept = 0, lwd = 0.5) +
+  scale_y_continuous(label = abs) 
+```
+
+## 1.3 weighted samples建模
+
+### 单因素建模
+```{r}
+model_unweighted <- glm(VAR4 ~ group,
+                       data = create3,
+                       family = binomial(link = "logit"))
+tidy(model_unweighted)
+```
+### 回归建模
+```{r}
+
+model_unweighted_reg <- glm(VAR4 ~ group+age_35 + history_abo + VAR60+IVF_No+as.factor(COS_pro)+VAR38+VAR42+VAR44+VAR51,
+                       data = create3,
+                       family = binomial(link = "logit"))
+tidy(model_unweighted_reg)
+
+#res11 <- cbind(tidy(model_unweighted_reg),
+#            exp(tidy(model_unweighted_reg)[2]),
+#            exp(tidy(model_unweighted_reg)[2])-1.96*tidy(model_unweighted_reg)[3],
+#            exp(tidy(model_unweighted_reg)[2])+1.96*tidy(model_unweighted_reg)[3]
+#            )
+
+res11 <- cbind(tidy(model_unweighted_reg),
+            exp(tidy(model_unweighted_reg)[2]),
+            exp(tidy(model_unweighted_reg)[2]-1.96*tidy(model_unweighted_reg)[3]),
+            exp(tidy(model_unweighted_reg)[2]+1.96*tidy(model_unweighted_reg)[3])
+            )
+
+```
+
+### IPW samples 建模
+```{r}
+model_ipw <- glm(VAR4 ~ group, 
+                data = livebirth_ipw,
+                weights = ipw,
+                family = binomial(link = "logit"))
+tidy(model_ipw)
+
+res12 <- cbind(tidy(model_ipw),
+            exp(tidy(model_ipw)[2]),
+            exp(tidy(model_ipw)[2]-1.96*tidy(model_ipw)[3]),
+            exp(tidy(model_ipw)[2]+1.96*tidy(model_ipw)[3])
+            )
+```
+
+### SIPW samples 建模
+
+```{r}
+library(broom)
+model_sipw <- glm(VAR4 ~ group, 
+                data = livebirth_ipw,
+                weights = sipw,
+                family = binomial(link = "logit"))
+
+tidy(model_sipw)
+
+temp <- lm(VAR4 ~ group, 
+                data = livebirth_ipw,
+                weights = sipw)
+
+
+res1 <- cbind(tidy(model_sipw),
+            exp(tidy(model_sipw)[2]),
+            exp(tidy(model_sipw)[2]-1.96*tidy(model_sipw)[3]),
+            exp(tidy(model_sipw)[2]+1.96*tidy(model_sipw)[3])
+            )
+
+
+res1 <- cbind(tidy(model_sipw),
+            exp(tidy(model_sipw)[2]),
+            exp(tidy(model_sipw)[2]-1.96*tidy(model_sipw)[3]),
+            exp(tidy(model_sipw)[2]+1.96*tidy(model_sipw)[3])
+            )
+
+colnames(res1) <- c("term","estimate","std.error","statistic","p.value",
+                    "odds ratio","lower","upper")
+
+# res1 %>% DT::datatable( filter='top', editable = 'cell',extensions = 'Buttons',
+#                   options = list(dom = 'Blfrtip',
+#                                  scrollX = TRUE,
+#                                  buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+#                                  lengthMenu = list(c(5,25,50,100,-1),
+#                                                    c(5,25,50,100,"All"))))
+#   
+
+```
+
+```{r echo=FALSE, child=c('02.Rmd','03.Rmd','04.Rmd','05.Rmd')}
+BOSS_MODE <- FALSE
+```
+
+
+
+

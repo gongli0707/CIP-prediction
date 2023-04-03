@@ -1,0 +1,22 @@
+correlationMatrix <- cor(trainingSet1[,-1]) %>% data.frame()
+# summarize the correlation matrix
+print(correlationMatrix)
+# find attributes that are highly corrected (ideally >0.75)
+highlyCorrelated <- findCorrelation(correlationMatrix, cutoff=0.5)
+# print indexes of highly correlated attributes
+print(highlyCorrelated)
+
+
+
+
+tmp <- vip_f(glmnet_m,'ElasticNet')
+
+
+
+
+  
+  
+# summarize importance
+print(importance)
+# plot importance
+plot(importance)

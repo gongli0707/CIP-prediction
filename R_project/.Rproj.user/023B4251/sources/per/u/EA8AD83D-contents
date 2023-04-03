@@ -1,0 +1,20 @@
+## Calculate shap values
+shap_result_bike = shap.score.rank(xgb_model = glmnet_m, 
+                                   X_train =fittedTL,
+                                   shap_approx = F
+)
+
+# `shap_approx` comes from `approxcontrib` from xgboost documentation. 
+# Faster but less accurate if true. Read more: help(xgboost)
+
+## Plot var importance based on SHAP
+var_importance(shap_result_bike, top_n=10)
+
+## Prepare data for top N variables
+shap_long_bike = shap.prep(shap = shap_result_bike,
+                           X_train = bike_x , 
+                           top_n = 10
+)
+
+## Plot shap overall metrics
+plot.shap.summary(data_long = shap_long_bike)

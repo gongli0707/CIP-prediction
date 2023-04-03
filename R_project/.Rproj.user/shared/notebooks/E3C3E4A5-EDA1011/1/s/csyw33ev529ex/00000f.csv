@@ -1,0 +1,6 @@
+"0","  for(i in which(colnames(model_dat1) %in% kept_factor_cols)){
+ model_dat1[,i] <-  fillmode_f(model_dat_tmp[,i])
+}
+"
+"2","Error in mode(x, na.rm = TRUE) : unused argument (na.rm = TRUE)
+"

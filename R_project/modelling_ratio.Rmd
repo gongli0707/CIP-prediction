@@ -1,0 +1,811 @@
+---
+title: "modelling"
+author: "Lin Yu"
+date: '2022-11-15'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+source("code/lib_helper.R")
+library(caret)
+library(naniar)
+library(pROC)
+library(ROCR) #prediction
+
+library(glmnet)
+
+library(caretEnsemble) ## ensemble 
+
+library(fastAdaboost)
+library(ada)
+```
+
+
+# STAGE I 
+## Read data
+
+
+```{r message=FALSE, warning=FALSE}
+model_dat1_nodummy1111_en <- read_excel("E:/重庆肿瘤医院/R_project/data/model_dat1_nodummy1111_en.xlsx")
+
+model_dat <- model_dat1_nodummy1111_en
+
+
+
+
+miss <- miss_var_summary(model_dat) %>%
+  mutate(pct_miss = round(pct_miss, 2)) %>%
+  filter(pct_miss > 0)
+
+DT::datatable(miss,
+  filter = "top", editable = "cell", extensions = "Buttons",
+  options = list(
+    dom = "Blfrtip",
+    scrollX = TRUE,
+    buttons = c("copy", "csv", "excel", "pdf", "print"),
+    lengthMenu = list(
+      c(5, 25, 50, 100, -1),
+      c(5, 25, 50, 100, "All")
+    )
+  )
+)
+
+model_dat_64 <- model_dat %>% 
+  mutate(`Number of combined drugs`=ifelse(is.na(`Number of combined drugs`),median(na.omit(`Number of combined drugs`)),`Number of combined drugs`),
+         
+         `Number of previous treatment drugs`=ifelse(is.na(`Number of previous treatment drugs`),median(na.omit(`Number of previous treatment drugs`) %>% as.numeric()),`Number of previous treatment drugs`),
+         
+         `Number of combined antitumor drugs`=ifelse(is.na(`Number of combined antitumor drugs`),median(na.omit(`Number of combined antitumor drugs`)),`Number of combined antitumor drugs`),
+         
+         
+         `ICIs drugs`=ifelse(is.na(`ICIs drugs`),median(na.omit(`ICIs drugs`) %>% as.numeric()),`ICIs drugs`)
+         
+         ) %>% mutate(
+           
+          `Percentage of CD4 lymphocytes`=
+            `Percentage of CD4 lymphocytes 2`
+         ) %>% 
+  
+  select(-`Lung cancer`,-`Superior lobe`,-`method of administration`,-`Percentage of CD4 lymphocytes 2`) %>% 
+  mutate(`ICIs dosage`=ifelse(`ICIs dosage`<=200,'1','2') %>% as.factor() ) %>% 
+  mutate(`ICIs dosage` = `ICIs dosage` %>% as.factor(),
+         `Previous lung disease` =`Previous lung disease` %>% as.factor(),
+         Smoking = as.factor(Smoking),
+         `Previous treatment_yn` =`Previous treatment_yn` %>% as.factor(),
+         `ICIs drugs` = as.factor(`ICIs drugs`)) 
+  
+
+#%>% 
+ # mutate(`Number of underlying diseases` = as.factor(`Number of underlying diseases`)) 
+
+##Number of underlying diseases;0为一类，1为一类，2，3，4，5及以上为一类
+  
+model_dat_64$`Number of underlying diseases` =  fct_collapse(model_dat_64$`Number of underlying diseases`,
+                                                   "2" = c("2","3", "4", "5"))
+
+
+
+#1. number of privious treatment drugs 是不是对应原始表格中的“既往治疗药物种类”，如果是的话，麻烦修改为“既往抗肿瘤治疗药物种类”。合并方案：0 为一类，1-5位一类，然后是否可以再分亚组1+2、3-5.
+
+
+model_dat_64$`Number of previous treatment drugs` =
+  fct_collapse(model_dat_64$`Number of previous treatment drugs`,
+                                                   
+ "1" = c("1","2","3", "4", "5") )
+
+
+#2.number of combined drugs 是不是对应原始表格中的“合并普通药物种类”呢，如果是的话麻烦修改为“合并非抗肿瘤药物种类”。合并方案：0为一类，1-6为一类，然后是否可以再分亚组1+2、3-6.
+
+model_dat_64$`Number of combined drugs` =
+  fct_collapse(model_dat_64$`Number of combined drugs`,
+                                                   "1" = c("1", "2","3","4","5","6") 
+  )
+
+## 0为一类；1-4为一类，然后是否可以再分亚组1-2、3-4.
+
+model_dat_64$`Number of combined antitumor drugs` =
+  fct_collapse(model_dat_64$`Number of combined antitumor drugs`,
+                                                   "1" = c("1","2","3","4") 
+  )
+
+## KPS 合并 70 及以下为一类； 80为一类，90及以上为一类
+model_dat_64$`KPS score` =
+  fct_collapse(model_dat_64$`KPS score` %>% as.character,
+                                                   "70" = c("30","40","50","60","70") ,
+ "90" = c("90","100")          
+  )
+  
+
+miss_var_summary(model_dat_64)
+
+model_dat_64$outcome <- as.factor(model_dat_64$outcome)
+
+```
+
+## Create dummy variable
+```{r}
+dummyModel <- dummyVars(as.factor(outcome) ~ ., data = model_dat_64)
+model_dat_64X <- as.data.frame(predict(dummyModel, newdata = model_dat_64))
+
+
+rangeModel <- preProcess(model_dat_64X, method = "range")
+model_dat_64X <- predict(rangeModel, newdata = model_dat_64X)
+
+
+model_dat_64_new <- cbind(model_dat_64$outcome, model_dat_64X)
+names(model_dat_64_new)[1] <- "outcome"
+```
+
+## Split training and test dataset
+```{r}
+
+set.seed(355)
+trainIndex <- createDataPartition(model_dat_64_new$outcome, p = 0.6, list = FALSE)
+trainingSet <- model_dat_64_new[trainIndex,]
+testSet <- model_dat_64_new[-trainIndex,]
+
+model_dat_64_new$outcome %>% table() ## 48/190=0.2526
+trainingSet$outcome %>% table() ## 34/134 =0.2537
+testSet$outcome %>% table() ##14/56 =0.25
+
+zero_one <- c('zero','one')
+
+trainingSet$outcome <- zero_one[trainingSet$outcome]
+
+testSet$outcome <- zero_one[testSet$outcome]
+
+trainingSet =trainingSet %>% mutate(outcome = as.factor(outcome))
+
+testSet =testSet %>% mutate(outcome = as.factor(outcome))
+
+
+```
+
+
+## Feature selection (Recursive Feature Elimination)
+```{r}
+
+set.seed(355)
+
+ctrl <- rfeControl(functions = rfFuncs,
+                   method = "repeatedcv",
+                   repeats = 3,
+                   verbose = FALSE)
+
+x_tmp = trainingSet[,c(2:ncol(trainingSet))]
+
+y_tmp = trainingSet[,1]
+
+rfProfile <- rfe(x_tmp,y_tmp , sizes=c(1:ncol(trainingSet)), rfeControl=ctrl)
+
+#rfProfile
+
+
+# xyplot(rfProfile)
+# stripplot(rfProfile)
+# 
+# histogram(rfProfile)
+# densityplot(rfProfile)
+```
+
+
+```{r}
+trellis.par.set(caretTheme())
+plot(rfProfile, type = c("g", "o"))
+```
+
+```{r}
+predictors(rfProfile) 
+```
+
+## New dataset
+```{r include=FALSE}
+trainingSet1 <- trainingSet %>% select(outcome,predictors(rfProfile) %>% dput()) 
+
+
+testSet1 <- testSet %>% select(outcome,predictors(rfProfile) %>% dput()) 
+```
+
+# STAGE II
+
+## Tuning
+
+```{r eval=FALSE, include=FALSE}
+names(getModelInfo()) ## avaible methods
+```
+
+
+```{r message=FALSE, warning=FALSE}
+set.seed(355)
+
+#devtools::install_github("souravc83/fastAdaboost")
+methodCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 3,
+  repeats = 3, #for repeatedcv
+  savePredictions = "final",
+  index = createFolds(trainingSet1$outcome,3),
+  classProbs = T,
+  summaryFunction = twoClassSummary,
+  sampling = 'up'
+)
+
+methodList <- c("rf", "glmnet", "xgbTree")
+ensemble <- caretList(outcome ~ ., data = trainingSet1, metric = "ROC", trControl = methodCtrl, methodList = methodList)
+```
+
+```{r}
+resampledList <- resamples(ensemble)
+summary(resampledList)
+```
+
+```{r}
+ensemble$rf$bestTune
+
+ensemble$glmnet$bestTune
+
+ensemble$xgbTree$bestTune
+
+
+#ensemble$ada$bestTune
+
+```
+
+
+
+# STAGE III
+
+## Final modes
+
+### RF
+```{r}
+twoClassCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 3,
+  repeats = 3, #for repeatedcv
+  savePredictions = "final",
+  classProbs = T,
+  summaryFunction = twoClassSummary, ###prSummary
+  
+  #summaryFunction = prSummary,
+  sampling = "up"
+)
+```
+
+
+```{r}
+set.seed(355)
+
+
+rf_m <- train(outcome ~., data = trainingSet1, method = "rf",  metric = "ROC",  trControl = twoClassCtrl, tuneLength = 10)
+
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+
+
+fittedTL <- predict(rf_m, testSet1)
+
+confusionMatrix(reference = testSet1$outcome, data = fittedTL, mode = "everything", positive = "one")
+
+fittedProb <- predict(rf_m, testSet, type = "prob")
+predictions <- fittedProb$one
+labels <- c(1,0)[testSet$outcome]
+roc_rf <- roc(labels, predictions,smooth =TRUE,ci = TRUE) 
+#pred <- prediction(predictions,labels)
+
+
+#perf <- performance(pred,"tpr",'fpr')
+
+#,
+#plot(roc1, col='blue',legacy.axes=TRUE)
+
+
+#plot(roc2, add=TRUE,col='red')  
+
+#plot(perf,avg='threshold',colorize=TRUE)
+
+```
+
+
+
+
+### glmnet
+
+
+```{r}
+x = trainingSet1 %>% select(-outcome)
+y= trainingSet1$outcome
+
+x_matrices <- glmnet::makeX(train = trainingSet1[, !names(trainingSet1) == "outcome"],
+                            test = testSet1[, !names(testSet1) == "outcome"])
+
+
+
+
+```
+
+```{r eval=FALSE, include=FALSE}
+
+
+# fit <- glmnet(x_matrices$x, y, family = "binomial")
+# cvfit <- cv.glmnet(x_matrices$x, y, family = "binomial", type.measure = "auc")
+
+
+set.seed(355)
+glmnet_m <- train(outcome ~., data = trainingSet1, method = "glmnet",  metric = "ROC",  trControl = twoClassCtrl, tuneLength = 10)
+
+
+fittedTL <- predict(glmnet_m, testSet1)
+confusionMatrix(reference = testSet1$outcome, data = fittedTL, mode = "everything", positive = "one")
+
+fittedProb <- predict(glmnet_m, testSet, type = "prob")
+predictions <- fittedProb$one
+labels <- c(1,0)[testSet$outcome]
+roc_glmnet <- roc(labels, predictions,smooth =TRUE,ci = TRUE) 
+
+#cvfit$lambda.min
+
+#plot(cvfit)
+```
+
+```{r eval=FALSE, include=FALSE}
+fittedglmnet <- predict(fit, newx = x_matrices$xtest, type = "class", s = c(cvfit$lambda.min))
+
+
+fittedglmnet_prob <- 1- predict(fit, newx = x_matrices$xtest, type = "response", s = c(cvfit$lambda.min))
+
+
+confusionMatrix(reference = testSet1$outcome, data = fittedglmnet %>% as.factor(), mode = "everything", positive = "one")
+
+
+roc2 <- roc(testSet1$outcome, fittedglmnet_prob %>% as.vector(),smooth =TRUE)
+```
+
+
+
+
+
+```{r}
+fit_glm2 <- glmnet(x_matrices$x, y, 
+                   alpha = 1,
+                   lambda = 0.03481957,
+                   family = "binomial")
+
+
+fittedglmnet2 <- predict(fit_glm2, newx = x_matrices$xtest, type = "class")
+
+fittedglmnet_prob2 <- 1- predict(fit_glm2, newx = x_matrices$xtest, type = "response") ###0.875: predicted 为0 ，所以是默认zero为postive的
+
+
+confusionMatrix(reference = testSet1$outcome, data = fittedglmnet2 %>% as.factor(), mode = "everything", positive = "one")
+
+
+roc3<- roc(testSet1$outcome, fittedglmnet_prob2 %>% as.vector(),smooth =TRUE,ci=TRUE)
+
+
+```
+
+### xgboost
+
+```{r}
+set.seed(355)
+
+
+xgb_m <- train(outcome ~., data = trainingSet1, method = "xgbTree",  metric = "ROC",  trControl = twoClassCtrl)
+
+fittedTL <- predict(xgb_m, testSet1)
+confusionMatrix(reference = testSet1$outcome, data = fittedTL, mode = "everything", positive = "one")
+
+fittedProb <- predict(xgb_m, testSet, type = "prob")
+predictions <- fittedProb$one
+labels <- c(1,0)[testSet$outcome]
+roc_xgb <- roc(labels, predictions,smooth =TRUE,ci = TRUE) 
+```
+
+
+```{r eval=FALSE, include=FALSE}
+xgb_train = xgb.DMatrix(data = x_matrices$x, label = c(1,0)[trainingSet1$outcome])
+xgb_test = xgb.DMatrix(data = x_matrices$xtest, label = c(1,0)[testSet1$outcome])
+```
+
+```{r eval=FALSE, include=FALSE}
+
+watchlist <- list(train=xgb_train, test=xgb_test)
+
+bst <- xgb.train(data=xgb_train, max.depth=2, eta=1, nthread = 2, nrounds=2, watchlist=watchlist, objective = "binary:logistic")
+
+xgb_train_res = xgb.train(data = xgb_train,
+                   objective = "binary:logistic",
+
+                  eval_metric='auc'
+                  
+                  )
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+
+
+xgb_fit = xgboost(data = x_matrices$x,
+                  label =c(1,0)[trainingSet1$outcome] ,
+                   objective = "binary:logistic",
+                  max.depth = 1, 
+                  eta=0.4,
+                  gamma=0,
+                  nrounds = 50,
+                  colsample_bytree=0.6,
+                  min_child_weight=1,
+                  subsample=0.75,
+                  eval_metric='auc'
+                  
+                  )
+
+
+fittedTL <- predict(xgb_fit, xgb_test)
+
+#fittedTL <- predict(bst, xgb_test) 
+
+prediction_xgb <- as.numeric(fittedTL > 0.18)
+prediction_xgb <- as.numeric(fittedTL > 0.5)
+
+confusionMatrix(reference = as.factor(c(1,0)[testSet1$outcome]) , data = as.factor(prediction_xgb) , mode = "everything", positive = "1")
+
+
+roc4 <- roc(as.factor(c(1,0)[testSet1$outcome]), fittedTL,smooth =TRUE,ci=TRUE)
+
+
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+fittedTL <- predict(xgb_fit, testSet)
+confusionMatrix(reference = testSet$outcome, data = fittedTL, mode = "everything", positive = "one")
+```
+
+
+
+```{r}
+saveRDS(rf_m, "rf_m.rds")
+
+saveRDS(fit_glm2, "glmnet_m.rds")
+
+
+saveRDS(xgb_m, "xgb_m.rds")
+
+```
+
+# DRAFT
+
+#### RF test
+  
+```{r eval=FALSE, include=FALSE}
+set.seed(355)
+rf <- train(outcome ~., data = trainingSet, method = "rf")
+rf
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+varimp_RF <- varImp(rf)
+plot(varimp_RF, main = " Variable Importance (Random Forest)")
+```
+
+
+```{r eval=FALSE, include=FALSE}
+fitted <- predict(rf, testSet)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+confusionMatrix(reference =testSet$outcome, data = fitted, mode = "everything", positive = '1')
+```
+
+#### EDA
+
+```{r eval=FALSE, include=FALSE}
+featurePlot(x = model_dat_64[,c("Height")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Height")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("Temperature")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Temperature")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+featurePlot(x = model_dat_64[,c("Smoking")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Smoking")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("KPS score")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("KPS score")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+
+
+featurePlot(x = model_dat_64[,c("Number of underlying diseases")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Number of underlying diseases")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("Previous lung disease")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Previous lung disease")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+featurePlot(x = model_dat_64[,c("ICIs drugs")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("ICIs drugs")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+featurePlot(x = model_dat_64[,c("ICIs dosage")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("ICIs dosage")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+featurePlot(x = model_dat_64[,c("Course of treatment")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Course of treatment")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("Number of combined antitumor drugs")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Number of combined antitumor drugs")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+
+
+featurePlot(x = model_dat_64[,c("Number of combined drugs")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Number of combined drugs")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("Previous treatment_yn")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Previous treatment_yn")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+featurePlot(x = model_dat_64[,c("Number of previous treatment drugs")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Number of previous treatment drugs")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+featurePlot(x = model_dat_64[,c("Percentage of CD4 lymphocytes")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Percentage of CD4 lymphocytes")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+featurePlot(x = model_dat_64[,c("Percentage of NK cell")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Percentage of NK cell")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("Percentage of  T lymphocytes")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Percentage of  T lymphocytes")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+
+
+featurePlot(x = model_dat_64[,c("Percentage of eosinophilus cells")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Percentage of eosinophilus cells")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+featurePlot(x = model_dat_64[,c("Percentage of neutrophilic granulocyte")],
+            y = model_dat_64$outcome,
+            plot = "box")
+
+featurePlot(x = model_dat_64[,c("Percentage of neutrophilic granulocyte")],
+            y = model_dat_64$outcome,
+            plot = "density")
+
+
+
+
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+nearZeroVar(model_dat_64, freqCut = 95/5, uniqueCut = 10,names = TRUE)
+```
+
+
+## tuning hyper-parameters
+```{r eval=FALSE, include=FALSE}
+twoClassCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 3,
+  repeats = 3,
+  savePredictions = "final",
+  classProbs = T,
+  summaryFunction = twoClassSummary, ###prSummary
+  sampling = "up"
+)
+
+```
+
+
+```{r eval=FALSE, include=FALSE}
+set.seed(355)
+
+
+rfTL <- train(outcome ~., data = trainingSet, method = "rf", 
+              metric = "ROC", 
+              
+              trControl = twoClassCtrl, tuneLength = 10)
+
+fittedTL <- predict(rfTL, testSet)
+confusionMatrix(reference = testSet$outcome, data = fittedTL, mode = "everything", positive = "one")
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+fittedProb <- predict(rfTL, testSet, type = "prob")
+fittedProb <- fittedProb$zero
+fittedProb <- factor(ifelse(fittedProb >= 0.6, "zero", "one"))
+```
+
+
+```{r eval=FALSE, include=FALSE}
+confusionMatrix(reference = testSet$outcome, data = fittedProb, mode = "everything", positive = "one")
+```
+
+## ensembling
+```{r eval=FALSE, include=FALSE}
+methodCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 5,
+  savePredictions = "final",
+  classProbs = T,
+  summaryFunction = twoClassSummary
+)
+```
+
+
+
+```{r eval=FALSE, include=FALSE}
+set.seed(355)
+
+methodCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 5,
+  repeats = 5,
+  savePredictions = "final",
+  classProbs = T,
+  summaryFunction = twoClassSummary
+)
+
+methodList <- c("rf", "glmnet", "svmRadial")
+ensemble <- caretList(outcome ~ ., data = trainingSet, metric = "ROC", trControl = methodCtrl, methodList = methodList)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+resampledList <- resamples(ensemble)
+summary(resampledList)
+```
+
+
+
+## Tuning 
+
+```{r eval=FALSE, include=FALSE}
+twoClassCtrl <- trainControl(
+  method = "repeatedcv",
+  number = 3,
+  repeats = 3,
+  savePredictions = "final",
+  classProbs = T,
+  summaryFunction = twoClassSummary, ###prSummary
+  
+  #summaryFunction = prSummary,
+  sampling = "up"
+)
+```
+
+
+```{r eval=FALSE, include=FALSE}
+set.seed(355)
+
+
+rfTL <- train(outcome ~., data = trainingSet1, method = "rf", 
+              metric = "ROC", 
+              
+              trControl = twoClassCtrl, tuneLength = 10)
+
+fittedTL <- predict(rfTL, testSet)
+confusionMatrix(reference = testSet$outcome, data = fittedTL, mode = "everything", positive = "one")
+```
+
+
+```{r eval=FALSE, include=FALSE}
+
+
+get_rfe(rfProfile)
+
+plot(get_rfe(rfProfile))
+```

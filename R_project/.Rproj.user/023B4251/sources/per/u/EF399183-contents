@@ -1,0 +1,73 @@
+predictioin_p_out <- read_excel("F:/下载/predictioin_p_out (2).xlsx")
+library(pROC)
+
+
+roc_data1 <- roc(predictioin_p_out$outcome, predictioin_p_out$lr, ci = TRUE)
+roc_data2 <- roc(predictioin_p_out$outcome, predictioin_p_out$rf, ci = TRUE)
+roc_data3 <- roc(predictioin_p_out$outcome, predictioin_p_out$gbc, ci = TRUE)
+roc_data4 <- roc(predictioin_p_out$outcome, predictioin_p_out$et, ci = TRUE)
+roc_data5 <- roc(predictioin_p_out$outcome, predictioin_p_out$ada, ci = TRUE)
+
+roc1 <- roc(predictioin_p_out$outcome, predictioin_p_out$lr,smooth =TRUE
+            
+           ) 
+
+roc2 <- roc(predictioin_p_out$outcome, predictioin_p_out$rf, 
+            smooth =TRUE) 
+
+
+roc3 <- roc(predictioin_p_out$outcome, predictioin_p_out$gbc, 
+            smooth =TRUE) 
+
+roc4 <- roc(predictioin_p_out$outcome, predictioin_p_out$et, 
+            smooth =TRUE) 
+
+
+roc5 <- roc(predictioin_p_out$outcome, predictioin_p_out$ada, 
+            smooth =TRUE)
+
+
+rs <- smooth(roc1, method='binormal')
+plot(rs, col='blue',legacy.axes=TRUE)
+
+plot(roc2, add=TRUE,col='red')
+
+plot(roc2, add=TRUE,col='red')
+
+
+g2 <- ggroc(list(LR=roc1, RF=roc2, GBC=roc3,ET=roc4,Ada=roc4), size = 1,legacy.axes=TRUE)+
+  geom_segment(aes(x = 0, xend = 1, y = 0, yend = 1), color="darkgrey", linetype="dashed")+
+  theme_minimal()
+  
+g2 + theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank(),
+           panel.background = element_blank(), axis.line = element_line(colour = "black"))
+
+
+
+
+library(modEvA)
+# 和ROC曲线的方法差不多
+pred <- predict(model, newdata = X_test)
+# curve也可以选ROC，可以直接用AUC()画图，但我还是习惯保存一下数据，用ggplot2画图
+pr_auc <- AUC(obs = predictioin_p_out$outcome, pred = predictioin_p_out$lr, curve = 'PR')
+pr_auc_data <- data.table(precision = pr_auc$thresholds$precision,
+                          recall = pr_auc$thresholds$sensitivity,
+                          prauc = pr_auc$AUC)
+# 画图
+ggplot(pr_auc_data, aes(x = recall, y = precision)) +
+  geom_line() +
+  geom_segment(
+    aes(x = 0, y = 1, xend = 1, yend = 0),
+    linetype = "dashed",
+    color = "grey50",
+    alpha = 0.8
+  ) +
+  xlab("Recall") +
+  ylab("Precision") +
+  ggtitle("Precision-Recall Curve") +
+  guides(linetype = 'none') +
+  annotate('text', 
+           label = paste0('PR-AUC: ', round(unique(pr_auc_data$prauc),3)),
+           x = 0.40, y = 0.18) +
+  theme_bw()
+

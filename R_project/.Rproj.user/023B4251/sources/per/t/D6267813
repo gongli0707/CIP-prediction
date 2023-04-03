@@ -1,0 +1,27 @@
+{
+    "id": "D6267813",
+    "path": "E:/2022/IRP/R_project/00_dataset.R",
+    "project_path": "00_dataset.R",
+    "type": "r_source",
+    "hash": "319360151",
+    "contents": "",
+    "dirty": false,
+    "created": 1671515415949.0,
+    "source_on_save": false,
+    "relative_order": 78,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "9,14",
+        "scrollLine": "0",
+        "docOutlineVisible": "0"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 1671703643,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1671703643840,
+    "read_only": false,
+    "read_only_alternatives": []
+}

@@ -1,0 +1,25 @@
+#
+# A projection pursuit regression (PPR) example
+#
+
+# Load the sample data; see ?datasets::mtcars for details
+data(mtcars)
+
+# Fit a projection pursuit regression model
+mtcars.ppr <- ppr(mpg ~ ., data = mtcars, nterms = 1)
+
+# Compute approximate Shapley values using 10 Monte Carlo simulations
+set.seed(101)  # for reproducibility
+shap <- explain(mtcars.ppr, X = subset(mtcars, select = -mpg), nsim = 10, 
+                pred_wrapper = predict)
+
+
+shap <- explain(glmnet_m, X = subset(testSet1, select = -outcome), nsim = 10, 
+                pred_wrapper = predict)
+shap
+
+# Shapley-based plots
+library(ggplot2)
+autoplot(shap)  # Shapley-based importance plot
+autoplot(shap, type = "dependence", feature = "wt", X = mtcars)
+autoplot(shap, type = "contribution", row_num = 1)  # explain first row of X

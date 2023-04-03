@@ -1,0 +1,442 @@
+
+library(shinydashboard)
+library(shinyWidgets)
+library(shinyjs)
+library(rintrojs)
+
+body <- dashboardBody(
+  
+  useShinyjs(),
+  introjsUI(),
+  
+  fluidRow(
+    column(width = 4,
+           introBox(data.step = 1, data.intro = 'In this section, you need to provide your blabla',
+           box(
+             
+          
+             title = "Answer the following questions", width = NULL, status = "primary",solidHeader = TRUE,
+             
+             box(
+               title = "PART 1: basic information", width = NULL, solidHeader = FALSE, status = "primary",
+               materialSwitch(
+                 inputId = "smoking",
+                 label = "Are you a former/current smoker?", 
+                 value = FALSE,
+                 status = "primary"
+               ),
+               
+               materialSwitch(
+                 inputId = "lung",
+                 label = "Have you ever had lung disease before?", 
+                 value = FALSE,
+                 status = "primary"
+               ),
+               
+               numericInput("height", "Your height (cm)",
+                            value = 0, 
+                            min = 0, max = 100, step = 1), br(),
+               numericInput("underlying_dis", "How many underlying diseases do you have?",
+                            value = 0, 
+                            min = 0, max = 100, step = 1)
+               ),
+             box(
+               title = "PART 2", width = NULL, solidHeader = FALSE, status = "primary",
+             
+               
+               numericInput("anti_drug", "How many anti-tumor medications do you take?",
+                            value = 0, 
+                            min = 0, max = 100, step = 1),
+               numericInput("treat_drug", "How many commonly prescribed drugs do you take?",
+                            value = 0, 
+                            min = 0, max = 100, step = 1),
+               selectInput(
+                       inputId = "ICIS",
+                       label = "ICIS drug",
+                       choices = c("Attilizumab",
+                                   "Carrilizumab",
+                                   "Tirelizumab",
+                                   "Nevirumab",
+                                   "Perbolizumab",
+                                   "Toripalimab",
+                                   "Sindillizumab",
+                                   "other"
+                       )
+                       # ,
+                       # options = list(
+                       #   title = "This is a placeholder")
+                     )
+               
+               
+             ),
+             
+             box(
+               title = "PART 3", width = NULL, solidHeader = FALSE, status = "primary",
+               numericInput("NK", "Percentage of NK cell",
+                            value = NULL, 
+                            min = 0, max = 100),
+               
+               numericInput("neutrophilic", "Percentage of neutrophilic granulocyte",
+                            value = NULL, 
+                            min = 0, max = 100),
+               
+               
+               numericInput("eosinophilus", "Percentage of eosinophilus cells",
+                            value = NULL, 
+                            min = 0, max = 100)
+             )
+             
+           )
+           )
+    ),
+       
+  
+    column(width = 4,
+           introBox(data.step = 2, data.intro = 'This section summarizes your input data and provide your predicted risk blabla',
+           box(
+             title = "Estimating risk", width = NULL, status = "warning",solidHeader = TRUE,
+             
+             box(
+               title = "Your data", width = NULL, status = "warning",
+               #background = "light-blue",
+               
+               uiOutput('mytext')
+               ),
+             
+             box(
+               title = "Prediction", width = NULL,status = "warning",
+               uiOutput('text1'),
+               htmlOutput('graph1')
+               )
+             
+             
+             
+           )
+           )
+            
+           ),
+
+    
+    column(width = 4,
+           introBox(data.step = 3, data.intro = 'This section shows blabla',
+           box(
+             title = "Our work", width = NULL, solidHeader = TRUE,status = "danger",
+             uiOutput('ourwork')
+           )
+           )
+    )
+  )
+)
+
+# We'll save it in a variable `ui` so that we can preview it in the console
+ui <- dashboardPage(
+  dashboardHeader(title ='irAE Risk Calculator'),
+  dashboardSidebar(disable = TRUE),
+  body
+)
+
+
+server <- function(input,output,session){
+  
+  #
+  # UI - GENERAL --------------------------------------------------------------
+  
+  
+  #show intro modal
+  observeEvent("", {
+    showModal(modalDialog(
+      includeHTML("intro_page.html"),
+      easyClose = TRUE,
+      footer = tagList(
+        actionButton(inputId = "intro", label = "INTRODUCTION TOUR",
+                     icon = icon("info-circle"),class = "btn-danger")
+      )
+    ))
+  })
+  
+  observeEvent(input$intro,{
+    removeModal()
+  })
+  
+  # show intro tour
+  observeEvent(input$intro,
+               introjs(session, options = list("nextLabel" = "Continue",
+                                               "prevLabel" = "Previous",
+                                               "doneLabel" = "Alright. Let's go"))
+  )
+  
+  
+  
+
+  
+
+  
+  
+ # Temperature
+ # Number of underlying diseases>=2
+ # History of lung diseases,
+ # Tirelizumab, Sindillizumab Perbolizumab
+ # NSCLC
+ # CD4 lymphocyte count
+  
+  
+  calculate_f <- function(
+    temperature=0,
+    underlying_dis=0,
+    lung=0,
+    ICIS="Attilizumab", 
+    NSCLC=0,
+    cd4 = 0
+     ){
+    
+    library(dplyr)
+    
+  my_model <- readRDS("glmnet_m1226.rds")
+  study_dat <- readRDS("model_dat1115.rds")
+  
+  tmp <- lapply(study_dat,is.factor) %>% unlist() %>% data.frame()
+  factor_col = colnames(study_dat)[tmp$.]
+  
+  study_dat[factor_col] <- lapply( study_dat[factor_col] , as.character)
+  
+  
+  new_obs = study_dat[1,] %>% data.frame()
+  
+  colnames(new_obs) <- colnames(study_dat)
+    
+  
+  
+  icis_in = ICIS
+  icis_num = case_when(icis_in=="Attilizumab"~1,
+                       
+                       icis_in=="Carrilizumab"~2,
+                       
+                       icis_in=="Tirelizumab"~3,
+                       icis_in=="Nevirumab"~4,
+                       icis_in=="Perbolizumab"~5,
+                       icis_in=="Toripalimab"~6,
+                       icis_in=="Sindillizumab"~7,
+                       icis_in=="other"~8)
+  
+  
+  
+  new_obs[,c("Height",
+              "Smoking",
+             "Number of underlying diseases",
+             "Previous lung disease",
+             "ICIs drugs",
+             "Number of combined antitumor drugs",  
+             "Number of previous treatment drugs" ,
+             "Percentage of NK cell",
+             "Percentage of eosinophilus cells" ,   
+             "Percentage of neutrophilic granulocyte"
+  )]= c(height,
+        smoking %>% as.numeric(),
+        underlying_dis,
+        lung %>% as.numeric(),
+        icis_num,
+        anti_drug,
+        treat_drug,
+        NK,
+        eosinophilus,
+        neutrophilic )
+  
+  
+  
+  newdat <- rbind(study_dat,new_obs)
+  
+  newdat[factor_col] <- lapply( newdat[factor_col] , as.factor)
+  
+  ##########
+  library(caret)
+  dummyModel <- dummyVars(as.factor(outcome) ~ ., data = newdat)
+  model_dat1115X <- as.data.frame(predict(dummyModel, newdata = newdat))
+  
+  
+  rangeModel <- preProcess(model_dat1115X, method = "range")
+  model_dat1115X <- predict(rangeModel, newdata = model_dat1115X)
+  
+  
+  model_dat1115_new <- cbind(newdat$outcome, model_dat1115X)
+  names(model_dat1115_new)[1] <- "outcome"
+  
+  testSet1 = model_dat1115_new[nrow(model_dat1115_new),]
+  
+  fittedTL <- predict(my_model,model_dat1115_new)
+  fittedProb <- predict(my_model, model_dat1115_new, type = "prob")
+  predictions <- fittedProb$one[nrow(model_dat1115_new)]
+  
+  return(predictions)
+
+  }
+  
+  graph_f <- function(x){
+    
+    danger = c(  "\U2764\UFE0F")
+    initial = c("&#x1F90D;")
+    total_n =27*6
+    initial_graph = paste0(rep(initial,total_n),'')
+    
+    if(is.na(x)){
+      output_graph = initial_graph
+    }else{
+      danger_n = rep(danger,round(x*total_n))
+      tmp_n = total_n- round(x*total_n)
+      nodanger_n = rep(initial,tmp_n)
+      output_graph =  c(danger_n,nodanger_n)
+                             
+    }
+    
+    return(output_graph)
+    
+  }
+  
+  output$graph1 = renderUI({ 
+    a = calculate_f(temperature=input$temperature
+                    ,underlying_dis=input$underlying_dis,
+                lung=0,ICIS=input$ICIS, NSCLC=input$NSCLC,
+                cd4=input$cd4 )
+    
+    
+   
+    HTML(graph_f(a))
+  })
+  
+  # output$download_d <- renderUI({
+  #   
+  #    
+  #   dropdown( 
+  #     downloadButton(outputId = "mytext1", label = "Download plot"),
+  #     size = "xs",
+  #     icon = icon("download", class = "opt"), 
+  #     up = TRUE
+  #   
+  # )
+  # })
+ 
+ 
+ 
+  
+  
+  output$text1 =  renderUI({ 
+   pred_risk =  calculate_f(temperature=input$temperature
+                            ,underlying_dis=input$underlying_dis,
+                            lung=0,ICIS=input$ICIS, NSCLC=input$NSCLC,
+                            cd4=input$cd4)
+   
+   if(is.na(pred_risk)){
+     
+     pred_out =  paste0("<h3>",
+                        "You estimated irAE risk is: ",'?',
+                        "</h3>","<br>"
+       
+       
+     )
+   }else{
+     pred_out = paste0("<h3>",
+                      "You estimated irAE risk is: ",pred_risk*100,'%',
+                      "</h3>","<br>"
+     )
+   }
+   
+  HTML(
+    pred_out
+   )
+   
+ 
+    
+    })
+  
+  
+  
+  
+  output$mytext <- renderUI({
+    calculate_f(temperature=input$temperature
+                ,underlying_dis=input$underlying_dis,
+                lung=input$lung,ICIS=input$ICIS, NSCLC=input$NSCLC,
+                cd4=input$cd4 )
+    HTML(paste0(
+      "<h3>",
+      "Height: ",input$height,
+      "</h3>",
+     
+      "<h3>",
+      "smoking: ",input$smoking,
+      "</h3>",
+     
+      "<h3>",
+      "Number of underlying diseases: ",input$underlying_dis,
+      "</h3>",
+      
+      "<h3>",
+      "Previous lung disease: " ,input$lung,
+      "</h3>",
+     
+      "<h3>",
+      "ICIs drugs: " ,input$ICIS,
+      "</h3>",
+     
+      "<h3>",
+      "Number of combined antitumor drugs: " ,input$anti_drug,
+      "</h3>",
+     
+      "<h3>",
+      "Number of previous treatment drugs: " ,input$treat_drug,
+      "</h3>",
+     
+      "<h3>",
+      "Percentage of NK cell: ",                 input$NK,
+      "</h3>",
+      
+      "<h3>",
+      "Percentage of eosinophilus cells: "   ,   input$eosinophilus,
+      "</h3>",
+      
+      "<h3>",
+      "Percentage of neutrophilic granulocyte: ", input$neutrophilic,
+      "</h3>"
+     
+
+     # "Annual interest rate: ", input$height, "%",
+     # "<br>",
+    # "Term: ", input$height, " years (", input$length * 12, " months)",
+     # "<br>"
+     # "<b>", "Monthly payment: ", format(round(monthPay, digits = 2), big.mark = ","), "</b>",
+     # "<br>"
+    # "<b>", "Total cost: ", "</b>", format(round(input$height, 2), big.mark = ","), " (principal) + ", format(round(monthPay * 12 * input$length - input$principal, 2), big.mark = ","), " (interest) = ", "<b>", format(round(monthPay * 12 * input$length, digits = 2), big.mark = ","), "</b>"
+    ))
+  })
+  
+  
+  output$ourwork <- renderUI({
+    HTML(paste0(
+      "<h3>", "Immune checkpoint inhibitors (ICIs) are a new class of anticancer drugs that activated T-cell-mediated immune responses against tumor cell[1]. In the past decades, therapeutically blocking inhibitory molecular included cytotoxic T-lymphocyte antigen 4 (CTLA4) inhibitors，programmed cell death 1 (PD1) inhibitors and programmed cell death 1 ligand (PD-L1) inhibitors[2]. ",
+      "</h3>",
+      "<br>",
+      "<h3>",
+      "Trials have certified that ICIs can significantly improve the survival of some patients with advanced malignancies[2], and ICIs have become the first-line treatment for an increasing number of indications [2, 3]. The ICIs treatment can also cause immune-related adverse events (irAEs), which may be serious or fatal[4, 5].",
+      "</h3>",
+      "<br>",
+      "<h3>",
+      "A systematic review and meta-analysis demonstrated that the ICIs-associated fatal irAEs were most common in pneumonitis, colitis, hepatitis, and neurologic effects[6]. Immune-related pneumonitis is a clinically serious and potentially lethal adverse event, which accounts for 35% of anti-PD-1/PD-L1-related deaths[7]. Establishing a safety prediction model for immune-related pneumonitis is the key to improving the outcome of tumor patients.",
+      "</h3>",
+      "<br>",
+      "<h3>",
+      "Machine Learning is a new artificial intelligence method, which has been widely used to establish prediction model[8, 9]. In this study, we will explore the risk factors of immune-related pneumonitis caused by ICIs, and establish a machine learning model to quantitatively predict the probability of immune-related pneumonitis, so as to provide a risk prediction tool for clinical practice.",
+      "</h3>"
+      # "Annual interest rate: ", input$height, "%",
+      # "<br>",
+      # "Term: ", input$height, " years (", input$length * 12, " months)",
+      # "<br>"
+      # "<b>", "Monthly payment: ", format(round(monthPay, digits = 2), big.mark = ","), "</b>",
+      # "<br>"
+      # "<b>", "Total cost: ", "</b>", format(round(input$height, 2), big.mark = ","), " (principal) + ", format(round(monthPay * 12 * input$length - input$principal, 2), big.mark = ","), " (interest) = ", "<b>", format(round(monthPay * 12 * input$length, digits = 2), big.mark = ","), "</b>"
+    ))
+  })
+  
+}
+
+
+
+# Preview the UI in the console
+shinyApp(ui = ui, server = server)

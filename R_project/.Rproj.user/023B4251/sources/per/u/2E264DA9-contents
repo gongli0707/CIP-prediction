@@ -1,0 +1,71 @@
+nsample <- 1300
+pos_n <- 624
+## 
+
+###########positive ---------
+#age
+var11 <- rnorm(pos_n,mean=65,sd=10) %>% round()
+#sex
+var12 <-rbinom(pos_n,prob = 0.6,size = 1) %>% as.factor()
+#temperature
+var13 <-c(runif(pos_n/2,min=39,max=41) %>% round(1),runif(pos_n/2,min=36.5,max=40) %>% round(1))
+#cough
+var14 <-rbinom(pos_n,prob = 0.8,size = 1)  %>% as.factor()
+#tired
+var15 <-rbinom(pos_n,prob = 0.7,size = 1) %>% as.factor()
+#headache
+var16 <-rbinom(pos_n,prob = 0.75,size = 1) %>% as.factor()
+#exposure
+var17 <-rbinom(pos_n,prob = 0.9,size = 1) %>% as.factor()
+#dysnea
+var18 <-rbinom(pos_n,prob = 0.5,size = 1) %>% as.factor()
+#soar 
+var19 <-rbinom(pos_n,prob = 0.95,size = 1) %>% as.factor()
+# phe
+var110 <-rbinom(pos_n,prob = 0.7,size = 1) %>% as.factor()
+#phe scenario
+var111 <-rmultinom(pos_n,prob = c(0.5,0.2,0.3),size = 1) %>% as.factor()
+
+
+
+
+##negative---------
+#age
+var21 <-rnorm(nsample-pos_n,mean=50,sd=10) %>% round()
+#sex
+var22 <-rbinom(nsample-pos_n,prob = 0.5,size = 1)  %>% as.factor()
+#temperature
+var23 <-runif(nsample-pos_n,min=36.5,max=37) %>% round(1)
+#cough
+var24 <-rbinom(nsample-pos_n,prob = 0.4,size = 1)  %>% as.factor()
+#tired
+var25 <-rbinom(nsample-pos_n,prob = 0.4,size = 1) %>% as.factor()
+#headache
+var26 <-rbinom(nsample-pos_n,prob = 0.4,size = 1) %>% as.factor()
+#exposure
+var27 <-rbinom(nsample-pos_n,prob = 0.1,size = 1) %>% as.factor()
+#dysnea
+var28 <-rbinom(nsample-pos_n,prob = 0.2,size = 1) %>% as.factor()
+#soar 
+var29 <-rbinom(nsample-pos_n,prob = 0.2,size = 1) %>% as.factor()
+# phe
+var210 <-rbinom(nsample-pos_n,prob = 0.1,size = 1) %>% as.factor()
+#phe scenario
+var211 <-rmultinom(nsample-pos_n,prob = c(0.5,0.2,0.3),size = 1) %>% as.factor()
+
+
+covid_dat <- data.frame(age=c(var11,var21),
+                        sex=c(var12,var22),
+                        temperature=c(var13,var23),
+                        cough=c(var14,var24),
+                        tiredness=c(var15,var25),
+                        headache=c(var16,var26),
+                        exposure_history=c(var17,var27),
+                        dysnea =c(var18,var28),
+                        sore_throat=c(var19,var29),
+                        phe=c(var110,var210),
+                        phe_scenario=c(var111,var211)) %>% 
+  mutate(outcome=ifelse(
+    (exposure_history=='1'& cough=='1'),1,0)
+    %>% as.factor()
+  )

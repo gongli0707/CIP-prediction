@@ -1,0 +1,28 @@
+{
+    "id": "B6229FA1",
+    "path": null,
+    "project_path": null,
+    "type": "object_explorer",
+    "hash": "0",
+    "contents": "",
+    "dirty": false,
+    "created": 1677726050404.0,
+    "source_on_save": false,
+    "relative_order": 79,
+    "properties": {
+        "id": "f13c01420daa4a4d9c6a3b5d9c4fdd9f",
+        "name": "kept_num_cols",
+        "title": "kept_num_cols",
+        "language": "R",
+        "source_window_id": "",
+        "Source": "Source"
+    },
+    "folds": "",
+    "lastKnownWriteTime": 2308706370261629474,
+    "encoding": "",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1677726050404,
+    "read_only": false,
+    "read_only_alternatives": []
+}

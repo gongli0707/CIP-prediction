@@ -1,0 +1,6 @@
+plot(roc_xgb , col='blue',legacy.axes=TRUE)
+
+
+plot(roc_glmnet, add=TRUE,col='red') 
+
+plot(roc_glmnet, add=TRUE,col='red') 

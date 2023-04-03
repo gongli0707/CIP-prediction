@@ -1,0 +1,45 @@
+# Feature selection (Recursive Feature Elimination)
+```{r message=FALSE, warning=FALSE}
+
+set.seed(355)
+
+rfFuncs$summary <- BigSummary
+
+objectives =   'auc_ap_sbr'# "SBrier"
+  
+  
+  
+
+
+x_tmp = trainingSet[,c(2:ncol(trainingSet))]
+
+y_tmp = trainingSet[,1]
+
+rfProfile <- rfe(x_tmp,y_tmp, sizes=c(1:ncol(trainingSet)), rfeControl=rfeControl(rfFuncs,
+                                                                                  method = "repeatedcv",                                                                          repeats = 10,
+                number = 3
+              ),
+
+                 metric=objectives)
+```
+
+## viz feature selection output
+```{r}
+trellis.par.set(caretTheme())
+plot(rfProfile, type = c("g", "o"))
+```
+
+```{r}
+
+predictors(rfProfile) 
+```
+
+```{r include=FALSE}
+trainingSet1 <- trainingSet %>% select(outcome,predictors(rfProfile) %>% dput()) 
+
+
+testSet1 <- testSet %>% select(outcome,predictors(rfProfile) %>% dput())
+
+head(testSet1)
+
+```

@@ -1,0 +1,183 @@
+test_dat 
+
+
+#result <- read_excel()
+wkdat <- data.frame(obs = ifelse(result$tol==1,'one','zero') %>% as.factor(),
+                    pred = ifelse(result$phat>0.191069,'one','zero')%>% as.factor(),one = result$phat,
+           zero = 1- result$phat
+             
+             )
+
+table(wkdat$obs,wkdat$pred)]
+
+tp <- 260
+pos <- 409
+  
+tn <- 1187
+neg <-  1827
+
+sen <- tp/pos 
+spe <- tn/neg 
+
+sen_se <- sqrt(
+  (sen*(1-sen))/409
+)
+
+spe_se <-  sqrt(
+  (spe*(1-spe))/1827
+)
+
+
+sen_upper <- sen+ sen_se*1.96
+sen_lower <- sen- sen_se*1.96
+
+
+
+spe_upper <- spe+ spe_se*1.96
+spe_lower <- spe- spe_se*1.96
+
+paste0('sen:',sen%>% round(3),'(',sen_lower%>% round(3),',',sen_upper%>% round(3),")")
+paste0('spe:',spe%>% round(3),'(',spe_lower%>% round(3),',',spe_upper%>% round(3),")")
+
+
+## resample with replacement
+result <- read_excel("F:/下载/result.xlsx")
+x <- c(1:nrow(result))
+tmp <- sample(x,nrow(result),replace=TRUE)
+
+tmp1 <- tmp %>% table() %>% data.frame()
+
+
+tmp
+
+
+test <- result[tmp,]
+
+
+
+
+performance_f <- function(data=wkdat,
+         bootstrap_n=1000
+         ){
+  set.seed(20230303)
+  x <- c(1:nrow(data))
+  sen_res <- NULL
+  spe_res <- NULL
+  for (i in c(1:bootstrap_n)){
+
+    tmp <- sample(x,nrow(result),replace=TRUE)
+    temp_res <- wkdat[tmp,] 
+    
+    tp_tmp <- table(temp_res$obs,temp_res$pred)[1]
+    pos_tmp <- tp_tmp + table(temp_res$obs,temp_res$pred)[3]
+    sen_tmp <- tp_tmp/pos_tmp
+    
+    tn_tmp <- table(temp_res$obs,temp_res$pred)[4]
+    neg_tmp <- table(temp_res$obs,temp_res$pred)[2] + tn_tmp
+    spe_tmp <- tn_tmp/neg_tmp
+    
+    sen_res <- cbind(sen_res,sen_tmp)
+    spe_res <- cbind(spe_res,spe_tmp)
+  }
+  
+  sen_out <- quantile(sen_res,probs = c(0.025,0.5,0.975))
+  spe_out <- quantile(spe_res,probs = c(0.025,0.5,0.975))
+
+  
+  
+  sen_out_final <-  paste0(sen_out[2]%>% round(3),'(',sen_out[1]%>% round(3),', ',sen_out[3]%>% round(3),")")
+  spe_out_final <- paste0(spe_out[2]%>% round(3),'(',spe_out[1]%>% round(3),', ',spe_out[3]%>% round(3),")")
+  
+  data.frame(sen = sen_out_final,
+             spe = spe_out_final)
+}
+
+
+performance_f(data=wkdat, bootstrap_n=1000)
+
+set.seed(20230303)
+sen_res <- NULL
+spe_res <- NULL
+for (i in c(1:5000)){
+  print(paste0('i=',i))
+
+  tmp <- sample(x,nrow(result),replace=TRUE)
+  temp_res <- wkdat[tmp,] 
+  
+  tp_tmp <- table(temp_res$obs,temp_res$pred)[1]
+  pos_tmp <- tp_tmp + table(temp_res$obs,temp_res$pred)[3]
+  sen_tmp <- tp_tmp/pos_tmp
+  
+  tn_tmp <- table(temp_res$obs,temp_res$pred)[4]
+  neg_tmp <- table(temp_res$obs,temp_res$pred)[2] + tn_tmp
+  spe_tmp <- tn_tmp/neg_tmp
+  
+  sen_res <- cbind(sen_res,sen_tmp)
+  spe_res <- cbind(spe_res,spe_tmp)
+}
+
+quantile(sen_res,probs = c(0.025,0.5,0.975))
+quantile(spe_res,probs = c(0.025,0.5,0.975))
+
+inner_loop <- function(data=wkdat){
+  
+  x <- c(1:nrow(data))
+  tmp <- sample(x,nrow(data),replace=TRUE)
+  temp_res <- data[tmp[1],]  
+  for(i in tmp[-1]){
+    
+    temp_res <- rbind(temp_res,data[i,])
+  }
+  
+  tp_tmp <- table(temp_res$obs,temp_res$pred)[1]
+  pos_tmp <- table(temp_res$obs,temp_res$pred)[1] + table(temp_res$obs,temp_res$pred)[3]
+  sen_tmp <- tp_tmp/pos_tmp
+  
+  tn_tmp <- table(temp_res$obs,temp_res$pred)[4]
+  neg_tmp <- table(temp_res$obs,temp_res$pred)[2] + table(temp_res$obs,temp_res$pred)[4]
+  spe_tmp <- tn_tmp/neg_tmp
+  
+  
+  return(c(sen_tmp,spe_tmp))
+  
+  
+} 
+
+cl <- parallel::makeCluster(detectCores())
+# Activate cluster for foreach library
+doParallel::registerDoParallel(cl)
+time_foreach <- system.time({
+  r <- foreach::foreach(i = 1:2000,
+                        .combine = rbind) %dopar% {
+                          inner_loop(data=wkdat)
+                        }
+})
+
+
+
+quantile(sen_res)
+quantile(spe_res)
+
+
+
+
+BigSummary(wkdat$obs,wkdat$pred)
+
+
+sum_perf_f <- function(model_m,
+                       model_name,
+                       testdat,
+                       classes= c("zero","one"),
+                       ...){
+  
+  pred_train_dat <- model_m$pred %>% 
+    select(obs,pred,one,zero)
+  
+  pred_test_dat <- pred_dat_f(dat = testdat,
+                              outcome=testdat$outcome,
+                              model=model_m)
+  
+  
+  train_perf <- c(data_type="Validation",
+                  model_name = model_name,
+                  BigSummary(pred_train_dat,lev = classes)

@@ -1,0 +1,248 @@
+---
+title: "SPH 619 final project data"
+author: "Lin Yu"
+date: "3/17/2021"
+output:
+  html_document:
+    toc: true
+    toc_depth: 2
+    #toc_float: true
+    code_folding: hide ##or show
+    df_print: paged
+    #df_print: kable
+    fig_caption: true
+    #fig_width
+    #fig_height
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(Hmisc)
+library(magrittr)
+library(tidyverse)
+library(DataExplorer)
+library(funModeling) 
+library(tidyverse) 
+library(Hmisc)
+load("_data/workdat.eur.rdata")
+```
+
+## 1. The data
+
+the data used in this study includes: - The clinical data of the CCSS original cohort; - The genetic data of the CCSS original cohort; - The summary statistics in Day's paper; - The UK bio-bank GWAS data.
+
+### The CCSS data
+
+The workdata used in Zhe's study can be found here. It includes 7891 female childhood cancer survivors.
+
+```{r}
+xfun::embed_file('workdata.rdata')
+load("workdata.rdata")##html_output option: df_print: paged
+```
+
+#### The inclusion and exclusion
+
+`Step 1`: include long-term female survivors from the CCSS original cohort, 4541 participants met this criteria.
+
+`Step 2`: further exclude participants from original cohort whose age at event cannot be determined based on the age assignment algorithm. after exclusion, 109 participants are removed. The age assignment algorithms are provided below for future use.
+
+-   An overview of the age assignment algorithm is provided here:
+
+![](AgeAssignment.pdf){width="29.7cm" height="21cm"}
+
+by implementing the previous two steps,4432 female survivors were included. The dataset (named as workdat) can be download here:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+library(dplyr)
+workdat <- workdata[workdata$cohort=="Original",] %>% select(### demo
+                              ccssid,status,age_dx, a_event,diagnose,excl_b4_cutage,age_algorithms,
+                              ### radio
+                              abdmaxrtdose,     pelvismaxrtdose, pitdose, 
+                              minovary,         maxovary,tbidose,
+                              ### bmt 
+                              bmt_tbi,
+                              ### chemo
+                               bcnu,                 busulfan,            ccnu,             chlorambucil, 
+                               cyclophosphamide,     ifosfamide,          melphalan,        nitrogen_mustard, 
+                               procarbazine,         thiotepa,            carboplatin,      cis_platinum,      
+                               bleomycin,            daunorubicin,        doxorubicin,       
+                               idarubicin,           methotrexate,        mitoxantrone,     vm_26,        
+                               vp_16
+                              
+  
+) %>% data.frame()
+
+###4541 pts in original cohort
+
+
+## 
+workdat <- workdat[is.na(workdat$excl_b4_cutage),]
+workdat <- workdat[,-6]
+save(workdat, file = "_data/workdat.rdata")
+
+# workdat
+```
+
+```{r}
+xfun::embed_file("_data/workdat.rdata")
+```
+
+The table below is an overview of the dataset:
+
+```{r}
+load("_data/workdat.rdata")
+workdat
+```
+
+#### Data with new ids
+
+```{r eval=FALSE, include=FALSE}
+load("_data/imp_newid.RData") ## 125x7891 newid RSID
+load("_data/ccssid.RData")##4432 ccssid 
+load("_data/var.list.rdata") ##variables needed
+load("_data/impdat0309.rdata")## 125x7891 oldid
+
+oldid <- impdat0309[[1]]$ccssid %>% data.frame() %>% `names<-`("ccssid")
+bothid <- list()
+for(i in c(1:125)){
+  bothid[[i]] <- cbind(oldid,imp_newid[[i]])
+}
+
+tempdat <- list()
+for(i in c(1:125)){
+  tempdat[[i]] <- bothid[[i]][bothid[[i]]$ccssid %in% ccssid$ccssid,]
+}
+
+newdat <- list()
+for (i in c(1:125)){
+  newdat[[i]] <- tempdat[[1]][which(tempdat[[1]]$ccssid %in% ccssid$ccssid),which(colnames(tempdat[[1]]) %in% var.list$var.name)]
+}
+#xfun::embed_file("_data/newdat.rdata")
+```
+
+`Step 3`: Exclude participants without GWAS data and are not of European descent. The `imp_newid` and `CCSS_PCs` provided new ids and the eur_yn information,respectively. Some participants do not have new id, as they do not have GWAS data. 1977 participants do not have GWAS data, and additional 250 participants are not of European descent. Finally, 2205 female survivors are included in the study. the imputed datasets can be downloaded here:
+
+```{r eval=FALSE, message=FALSE, warning=FALSE, include=FALSE}
+## see newid.r for more details
+load("_data/CCSS_PCs.rdata")
+load("_data/newdat.rdata")
+EURindx <- (newdat[[1]]$RANDOMIZED_SUBJECT_ID %in% CCSS_PCs$RANDOMIZED_SUBJECT_ID) 
+eurdat <- list()
+for (i in c(1:125)){
+  eurdat[[i]] <- newdat[[i]][EURindx,]
+}
+```
+
+```{r}
+xfun::embed_file("_data/eurdat.rdata")
+```
+
+Also, the original dataset of 2205 female survivors are provided below:
+
+```{r}
+xfun::embed_file("_data/workdat.eur.rdata")
+```
+
+To summarize the inclusion and exclusion procedure, a flowchart is provided:
+
+![](_figures/exclusion%20chart.pdf){width="29.7cm" height="21cm"}
+
+### Summary statistics in Day's paper
+
+The summary statistics in Day's paper are available at: <https://www.reprogen.org/data_download.html>
+
+it includes the summary statistics of 2,418,695 SNPs (including MarkerName, SNP ID; allele1, effect allele; allele2, other allele; HapMap_eaf, estimated allele frequency in HapMap2; effect, effect size; stderr, standard error; p, p-value) in a meta-analysis for age at natural menopause.
+
+There are two main issues:
+
+-   The chromosome number and base position information are missing in Day's paper. However, they are of use to specify a particular SNP.
+
+    -   Solution: this website (<http://may2009.archive.ensembl.org/biomart/martview/24df1f7113fe4c52bf0bf9944305ba0f>) provides information on rsid, chr, and BP. Data can be download. Using "rsid" as the key to match the rsid in Day's paper with the downloaded paper to get the chr and BP information.
+
+        -   however, some rsid do not have chr and BP information in this website;
+
+        -   some rsid have multiple BP information.
+
+-   In Day's paper, the SNP positions are given in Build 37 coordinates of the
+    reference genome (hg18). The GWAS data in CCSS original cohort are given in Build 38(hg19).
+
+    -   liftover can be used to tranform summary statistics from hg18 to hg19.
+
+### A summary table of the datasets
+
+this is a summary table of the data sets received up to now.
+
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **Dataset Name**                 | **Source/Location**                                                                    | **Receive date** | **Description**                                                                                                               |
++==================================+========================================================================================+==================+===============================================================================================================================+
+| **imp.list.rdata**               | R:\\soph\\EPI\\Yan's Group\\Lin\\link datasets\\\_data\\imp.list.rdata                 | 3/2/2021         | 125 imputed datasets from zhe,4432 entries                                                                                    |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **CCSS_impute**                  | graham.computecanada.ca                                                                | 3/3/2021         | 5739 people with genetic data in PLINK format                                                                                 |
+|                                  |                                                                                        |                  |                                                                                                                               |
+|                                  | path: /home/linyu/projects/def-yanyuan/linyu/imp/QCed_PLINK                            |                  | **QCed_PLINK** folder, from Cindy                                                                                             |
+|                                  |                                                                                        |                  |                                                                                                                               |
+|                                  | (note: the original data CCSS_impute)                                                  |                  |                                                                                                                               |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **CCSS_EUR_PCs_recoded_ids.txt** | R:\\soph\\EPI\\Yan's Group\\Lin\\link datasets\\\_data\\ CCSS_EUR_PCs_recoded_ids.txt  | 3/4/2021         | PCs , EUR_YN(yes/no) of 5739 entries, with 5156 EUR pts. from Cindy. The first 10 PCs should be put into the regression model |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **Imp_newid.rdata**              | R:\\soph\\EPI\\Yan's Group\\Lin\\link datasets\\\_data\\imp_newid.rdata                | 3/4/2021         | 125 imputed datasets with new ccssid,4432 entries, from Yan                                                                   |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| **workdat.eur**                  | \\\_data\\workdat.eur.rdata                                                            | 3/9/2021         | 2205 participants after applying inclusion and exclusion criteria, workdata in this study. with 1807 complete cases.          |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| anm.txt                          | <https://www.reprogen.org/data_download.html>                                          | NA               | summary statistics in Day's paper                                                                                             |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+| bp.txt                           | <http://may2009.archive.ensembl.org/biomart/martview/24df1f7113fe4c52bf0bf9944305ba0f> | NA               | chr and base position information given in hg18                                                                               |
++----------------------------------+----------------------------------------------------------------------------------------+------------------+-------------------------------------------------------------------------------------------------------------------------------+
+
+## 2. EDA
+
+The variables used in this study:
+
+```{r}
+colnames(workdat.eur)
+intro <- introduce(workdat.eur) %>% data.frame()
+```
+
+The number of participants with missing values and the number of complete cases are:
+
+```{r}
+c(intro$rows, intro$complete_rows)
+```
+
+### Missingness and zero values
+
+```{r}
+load("_data/tab1.rdata")
+arrange(tab1, -p_zeros) 
+```
+
+```{r}
+#%missing
+plot_missing(workdat.eur,group = list("%missing less than 5%" = 0.05, "%missing greater than 5%" = 1), missing_only = TRUE,geom_label_args = list("size" = 2, "label.padding" = unit(0.1, "lines")))
+```
+
+### Visualization of variables
+
+The distribution of continuous variables are as follows, we can see that chemo agents have many zero values (as we see from the above table).
+
+```{r}
+###Frequency of numeric var.
+plot_num(workdat.eur[,-1])
+```
+
+The distribution of categorical variables:
+
+```{r}
+freq(workdat.eur, input=c("diagnose"))
+freq(workdat.eur,input=c("status"))
+freq(workdat.eur,input =c("bmt_tbi"))
+```
+
+### A summary table of selected variables
+
+```{r message=FALSE, warning=FALSE}
+library(table1)
+table1(~ status+age_dx+a_event+diagnose+abdmaxrtdose+pelvismaxrtdose+pitdose
+       +minovary+maxovary+tbidose+bmt_tbi
+       , data=workdat.eur[,-1])
+```

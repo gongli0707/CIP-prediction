@@ -1,0 +1,17 @@
+library("shapper")
+ive_rf <- shap(exp_rf, new_observation = trainingSet1)
+ive_rf
+##     Pclass  Sex Age SibSp Parch Fare Embarked _id_ _ylevel_ _yhat_
+## 1        1 male   8     0     0   72        C    1           0.558
+## 1.1      1 male   8     0     0   72        C    1           0.558
+## 1.2      1 male   8     0     0   72        C    1           0.558
+## 1.3      1 male   8     0     0   72        C    1           0.558
+## 1.4      1 male   8     0     0   72        C    1           0.558
+## 1.5      1 male   8     0     0   72        C    1           0.558
+##     _yhat_mean_ _vname_ _attribution_ _sign_      _label_
+## 1     0.3672941  Pclass   0.070047752      + randomForest
+## 1.1   0.3672941     Sex  -0.154519708      - randomForest
+## 1.2   0.3672941     Age   0.143046212      + randomForest
+## 1.3   0.3672941   SibSp   0.003154522      + randomForest
+## 1.4   0.3672941   Parch  -0.018111585      - randomForest
+## 1.5   0.3672941    Fare   0.086728705      + randomForest

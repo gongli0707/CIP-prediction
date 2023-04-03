@@ -1,0 +1,33 @@
+
+
+
+
+
+set.seed(20230303)
+sen_res <- NULL
+spe_res <- NULL
+for (i in c(1:1000)){
+  print(paste0('i=',i))
+  
+  tmp <- sample(x,nrow(result),replace=TRUE)
+  temp_res <- wkdat[tmp[1],]  
+  
+  for(i in tmp[-1]){
+    
+    temp_res <- rbind(temp_res,wkdat[i,])
+  }
+  
+  tp_tmp <- table(temp_res$obs,temp_res$pred)[1]
+  pos_tmp <- table(temp_res$obs,temp_res$pred)[1] + table(temp_res$obs,temp_res$pred)[3]
+  sen_tmp <- tp_tmp/pos_tmp
+  
+  tn_tmp <- table(temp_res$obs,temp_res$pred)[4]
+  neg_tmp <- table(temp_res$obs,temp_res$pred)[2] + table(temp_res$obs,temp_res$pred)[4]
+  spe_tmp <- tn_tmp/neg_tmp
+  
+  sen_res <- cbind(sen_res,sen_tmp)
+  spe_res <- cbind(spe_res,spe_tmp)
+}
+
+quantile(sen_res)
+quantile(spe_res)

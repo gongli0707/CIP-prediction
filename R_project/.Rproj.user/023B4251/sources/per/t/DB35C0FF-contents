@@ -1,0 +1,373 @@
+---
+title: "EDA"
+author: "Lin Yu"
+date: "4/19/2021"
+output:
+  html_document:
+    code_folding: hide
+    toc: yes
+  word_document:
+    toc: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+library(dplyr)
+library(ggplot2)
+library(cowplot)##plot_grid
+library(forcats)##freq
+library(tidyr)##gather
+library(ggjoy)#geom_joy
+library(Hmisc)##label()
+library(table1)
+
+```
+
+```{r}
+load("data/ctdat0609.rdata")
+load("data/workdat.eur.rdata")
+```
+
+# Diagnose
+
+```{r}
+workdat.eur =ctdat0609[[1]]
+
+
+dat=workdat.eur
+factor_var = dat$diagnose
+ggplot(dat,aes(x=reorder(factor_var,factor_var,function(x) -length(x))))+
+  geom_bar(alpha=0.8,fill="#69b3a2")+
+  coord_flip ()+
+  geom_text(
+    aes(label=after_stat(count)),
+    stat='count',
+    position= position_dodge(width = 0.9),
+    #vjust=-0.25
+    hjust= 1
+    
+  )+
+  geom_text(aes(label = scales::percent(..prop..), group = 1), stat= "count",
+            position= position_dodge(width = 0.9),hjust=-0.5)+
+  geom_text(
+    aes(label=after_stat('(')),
+    stat='count',
+    position= position_dodge(width = 0.9),
+    #vjust=-0.25
+   hjust= -2)+
+  geom_text(
+    aes(label=after_stat(')')),
+    stat='count',
+    position= position_dodge(width = 0.9),
+    #vjust=-0.25
+    hjust= -15)+
+  labs(x="Diagnose",y="Number of Patients")+
+  ylim(0,1000)
+```
+
+```{r}
+dat=workdat.eur
+
+##if position= stack
+ggplot(dat %>% count(diagnose,status_new),aes(diagnose,n,fill=status_new))+
+  geom_bar(stat = "identity",position='dodge')+
+  scale_fill_manual(values=c('gray','khaki','deepskyblue','firebrick'))+
+  theme(axis.text.x=element_text(angle=90, hjust=1))+
+  labs(x="Diagnose",y="Number of Patients",fill="Ovarian Status")
+
+ggplot(dat %>% count(diagnose,status_new),aes(diagnose,n,fill=status_new))+
+  geom_bar(stat = "identity",position='dodge')+
+  scale_fill_manual(values=c('gray','khaki','deepskyblue','firebrick'))+
+  theme(axis.text.x=element_text(angle=90, hjust=1))+
+  labs(x="Diagnose",y="Number of Patients",fill="Ovarian Status")
+```
+
+```{r}
+dat=workdat.eur
+dat$diagnose_reorder <- reorder(dat$diagnose,dat$diagnose,function(x) -length(x))
+label(dat$diagnose_reorder) <- "Diagnose"
+
+table1(~diagnose_reorder|status_new,data=dat)
+```
+
+
+# Age at Diagnose
+
+```{r}
+dat=workdat.eur
+continuous_var =dat$age_dx
+xlab="age at diagnose"
+ggplot(dat, aes(x = continuous_var)) + 
+  geom_histogram(binwidth=1,fill="#69b3a2",color="#e9ecef",alpha=0.9) + 
+  geom_density(aes(y = ..count..),alpha=0)+
+  labs(x="Age at Diagnose",y="Number of Patients")
+
+```
+
+
+```{r message=FALSE, warning=FALSE}
+dat=workdat.eur[,c(3,34)]##age_dx and status
+continuous_var = dat$age_dx
+facet_var=dat$status_new %>% as.factor()
+ ggplot(dat,aes(x=continuous_var,fill=facet_var))+
+  geom_histogram(binwidth = 1, alpha=0.8,color="#e9ecef")+
+  facet_wrap(facet_var)+
+  geom_density(alpha=0,aes(y=..count..))+
+labs(x ="Age at Diagnose", 
+     fill = "Ovarian Status",
+     y = "Number of Patients"#, title = ("Histogram & Boxplot of age at event")
+)+
+  theme_bw() +
+  scale_fill_manual(values=c('gray','khaki','firebrick','skyblue'))+
+  theme(legend.position = "top",
+        # legend.title = element_blank(),
+        text=element_text(size=12, family="sans"))
+
+
+dat=workdat.eur[,c(3,34)]##age_dx and status
+continuous_var = dat$age_dx
+facet_var=dat$status_new %>% as.factor()
+p2 <- ggplot(dat,aes(x=fct_reorder(facet_var,continuous_var,.fun=median,.desc=TRUE),y=continuous_var),fill=facet_var)+
+  geom_boxplot(aes(fill=fct_reorder(facet_var,continuous_var,.fun=median,.desc =TRUE)))+
+  coord_flip()+
+  labs(x ="", 
+       fill = "Ovarian Status",
+       y = "Age at Diagnose"#, title = ("Histogram & Boxplot of age at event")
+  )+
+  theme_bw() +
+  scale_fill_manual(values=c('khaki','firebrick','skyblue','gray'))+
+  theme(legend.position = "none",
+        #legend.title = element_blank(),
+        text=element_text(size=12, family="sans"))
+p1
+  
+plot_grid(p1, p2, align="v", nrow = 2, rel_heights = c(2/3, 1/3))
+
+```
+
+```{r}
+dat=workdat.eur
+continuous_var = dat$age_dx
+facet_var=dat$diagnose
+ ggplot(dat, aes(x =continuous_var,fill=facet_var)) + 
+  geom_density(alpha=0.8,aes(y=..count..))+
+  facet_wrap(facet_var,nrow = 2)+
+  labs(x="Age at diagnose",fill="Diagnose",y="Number of Patients")
+```
+# Radiation Dose
+```{r}
+dat=workdat.eur[which(workdat.eur$status_new!="Censored"),c(6:9,34)] 
+dat<- gather(dat,"radiation","radiodose",1:4)
+
+dat$radiation[dat$radiation=="abdmaxrtdose"]="Abdomen"
+dat$radiation[dat$radiation=="pelvismaxrtdose"]="Pelvis"
+dat$radiation[dat$radiation=="minovary"]="Ovary"
+dat$radiation[dat$radiation=="pitdose"]="Pituitary"
+
+table1(~radiodose|status_new,data=dat)
+
+ggplot(dat,aes(x=radiodose,y=status_new,fill=status_new))+
+  geom_joy(alpha=0.8)+
+  facet_wrap(~radiation)+
+  scale_fill_manual(values=c('khaki','firebrick','gray'))+
+  labs(x="Radiation Dose (cGy)",y="",fill="Ovarian Status")+
+  theme(legend.position = "bottom")
+
+
+```
+
+```{r}
+load("R:/soph/EPI/Yan's Group/Lin/_Thesis/_data/combdat.rdata")
+dat= combdat
+
+ctdat0609[[1]]
+
+table1(~rt_yn|status_new_censor,data = ctdat0609[[1]])
+```
+
+```{r}
+dat=workdat.eur[which(workdat.eur$status_new!="Censored"),c(6:9,34)] 
+dat<- gather(dat,"radiation","radiodose",1:4)
+
+dat$radiation[dat$radiation=="abdmaxrtdose"]="Abdomen"
+dat$radiation[dat$radiation=="pelvismaxrtdose"]="Pelvis"
+dat$radiation[dat$radiation=="minovary"]="Ovary"
+dat$radiation[dat$radiation=="pitdose"]="Pituitary"
+
+table1(~radiodose|radiation*status_new,data=dat)
+```
+
+
+# BMT
+
+```{r}
+dat=workdat.eur
+label(dat$bmt_tbi) <- "BMT and/or TBI"
+table1(~bmt_tbi|status_new,dat=ctdat0609[[1]])
+```
+
+```{r}
+dat=workdat.eur[which(workdat.eur$tbidose>0),c(11,34)] 
+
+ggplot(dat,aes(x=tbidose,y=status_new,fill=status_new))+
+  geom_joy()+
+  scale_fill_manual(values=c('gray','khaki','firebrick','deepskyblue'))+
+  labs(x="Radiation Dose (cGy)",y="",fill="Ovarian Status")+
+  theme(legend.position = "bottom")
+```
+
+
+# Chemo
+
+```{r}
+dat=workdat.eur[,c(98:117)]
+dat=dat[,c(-2,-16,-18)] # "busulfan",#idarubicin,#mitoxantrone
+
+
+dat <- dat %>% gather(key="chemoname",value="chemodose",1:17)
+
+dat$chemo0="1"
+
+dat$chemo0[which(dat$chemodose ==0)]="No"
+dat$chemo0[which(dat$chemodose > 0)]="Yes"
+dat$chemo0[is.na(dat$chemodose)]="Missing"
+label(dat$chemoname) <- "Chemo Agent"
+
+table1(~chemoname|chemo0,data=dat,overall=F)
+
+
+table1(~status,data=ctdat0609[[1]])
+
+table(ctdat0609[[1]]$pitdose==0&ctdat0609[[1]]$bmt_tbi==0&ctdat0609[[1]]$minovary==0)
+```
+
+```{r}
+#several chemo agent have a yes less than 10 
+dat=workdat.eur[,c(13:32,34)]
+
+dat <- dat %>% gather(key="chemoname",value="chemodose",1:20)
+
+dat$chemo0="1"
+
+dat$chemo0[which(dat$chemodose ==0)]="No"
+dat$chemo0[which(dat$chemodose > 0)]="Yes"
+dat$chemo0[is.na(dat$chemodose)]="Missing"
+label(dat$chemoname) <- "Chemotherapy Agent"
+index_chemo <- which(dat$chemoname=="busulfan" |dat$chemoname=="carboplatin" |
+                        dat$chemoname=="chlorambucil"|dat$chemoname=="idarubicin"|
+                        dat$chemoname=="ifosfamide"|dat$chemoname=="mitoxantrone"|dat$chemoname=="thiotepa")
+dat=dat[-index_chemo,]
+
+
+dat= dat[which(dat$chemodose>0),]
+
+chemonames <- dat$chemoname %>% unique()
+p <- list()
+for(i in c(1:length(chemonames))){
+  dattemp=dat[which(dat$chemoname==chemonames[i]),]
+  p[[i]] <- ggplot(dattemp,aes(x=chemodose,y=status_new,fill=status_new))+
+    geom_joy()+
+    scale_fill_manual(values=c('gray','khaki','firebrick','deepskyblue'))+
+    theme(legend.position="none")+
+    labs(x="",y="")
+}
+
+
+plot_grid(p[[1]], p[[2]],p[[3]],p[[4]], p[[5]],p[[6]],p[[7]], p[[8]],p[[9]],p[[10]],p[[11]], p[[12]],p[[13]],nrow=4)
+
+```
+# Age at Event
+
+```{r}
+dat=workdat.eur
+continuous_var =dat$a_event
+xlab="age at event"
+ggplot(dat, aes(x = continuous_var)) + 
+  geom_histogram(binwidth=1,fill="#69b3a2",color="#e9ecef",alpha=0.9) + 
+  geom_density(aes(y = ..count..))+
+  labs(x="Age at Event",y="Number of Patients")
+
+```
+
+```{r}
+dat=workdat.eur[,c(4,34)]##age_dx and status
+
+dat$status_new_3 = dat$status_new
+dat$status_new_3[dat$status_new=="Censored"]="Normal"
+continuous_var = dat$a_event
+facet_var=dat$status_new_3 %>% as.factor()
+ggplot(dat,aes(x=continuous_var,fill=facet_var))+
+  geom_histogram(binwidth = 1, alpha=0.8,color="#e9ecef")+
+  facet_wrap(facet_var)+
+  geom_density(alpha=0,aes(y=..count..))+
+  labs(x ="Age at Event", 
+       fill = "Ovarian Status",
+       y = "Number of Patients"#, title = ("Histogram & Boxplot of age at event")
+  )+
+  theme_bw() +
+  scale_fill_manual(values=c('khaki','firebrick','skyblue'))+
+  theme(legend.position = "top",
+        # legend.title = element_blank(),
+        text=element_text(size=12, family="sans"))
+```
+```{r}
+dat=workdat.eur[,c(4,34)]##age_dx and status
+dat$status_new_3 = dat$status_new
+dat$status_new_3[dat$status_new=="Censored"]="Normal"
+
+continuous_var = dat$a_event
+facet_var=dat$status_new_3 %>% as.factor()
+
+ggplot(dat,aes(x=fct_reorder(facet_var,a_event,.fun=median,.desc=TRUE),y=continuous_var),fill=facet_var)+
+  geom_boxplot(aes(fill=fct_reorder(facet_var,continuous_var,.fun=median,.desc =TRUE)))+
+  coord_flip()+
+  labs(x ="", 
+       fill = "Ovarian Status",
+       y = "Age at Event"#, title = ("Histogram & Boxplot of age at event")
+  )+
+  theme_bw() +
+  scale_fill_manual(values=c('khaki','firebrick','skyblue'))+
+  theme(legend.position = "none",
+        #legend.title = element_blank(),
+        text=element_text(size=12, family="sans"))
+```
+
+# Ovarian Status
+```{r}
+dat =workdat.eur
+label(dat$status_new) <- "Ovarian Status"
+table1(~ a_event|status_new,data=dat)
+
+```
+
+#Event rate
+
+```{r}
+##a complete dataset is : 1,6,11,16,21 
+sum( ctdat0609[[1]]$ipcw_rsf_40[ctdat0609[[1]]$event_poi_40==1 & ctdat0609[[1]]$test==1] )/(sum(ctdat0609[[1]]$ipcw_rsf_40[ctdat0609[[1]]$test==1]))
+
+sum( ctdat0609[[6]]$ipcw_rsf_40[ctdat0609[[6]]$event_poi_40==1 & ctdat0609[[6]]$test==1] )/(sum(ctdat0609[[6]]$ipcw_rsf_40[ctdat0609[[6]]$test==1]))
+
+
+sum( ctdat0609[[11]]$ipcw_rsf_40[ctdat0609[[11]]$event_poi_40==1 & ctdat0609[[11]]$test==1] )/(sum(ctdat0609[[11]]$ipcw_rsf_40[ctdat0609[[11]]$test==1]))
+
+sum( ctdat0609[[16]]$ipcw_rsf_40[ctdat0609[[16]]$event_poi_40==1 & ctdat0609[[16]]$test==1] )/(sum(ctdat0609[[16]]$ipcw_rsf_40[ctdat0609[[16]]$test==1]))
+
+sum( ctdat0609[[21]]$ipcw_rsf_40[ctdat0609[[21]]$event_poi_40==1 & ctdat0609[[21]]$test==1] )/(sum(ctdat0609[[21]]$ipcw_rsf_40[ctdat0609[[21]]$test==1]))
+
+sum( ctdat0609[[1]]$ipcw_rsf_40[ctdat0609[[1]]$event_poi_40==1])/(sum(ctdat0609[[1]]$ipcw_rsf_40))
+
+
+(ctdat0609[[1]]$test==1) %>% sum()
+(ctdat0609[[6]]$test==1) %>% sum()
+(ctdat0609[[11]]$test==1) %>% sum()
+(ctdat0609[[16]]$test==1) %>% sum()
+(ctdat0609[[21]]$test==1) %>% sum()
+
+#383+394+402+394+412
+```
+
