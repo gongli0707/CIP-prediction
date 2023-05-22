@@ -1,0 +1,14 @@
+name: IRPcalculator
+title: IRPcalculator
+username:
+account: lin-yu
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 7946936
+bundleId: 7241554
+url: https://lin-yu.shinyapps.io/IRPcalculator/
+when: 1684579874.57686
+lastSyncTime: 1684579874.57686
+asMultiple: FALSE
+asStatic: FALSE
+ignoredFiles: .RData|00helper.R|code/lib_helper.R|input_template.rds|intro_page.Rmd|intro_text.html|lin_CV.html|model.R|model_dat1115.rds|rf_m.rds|tmp.R|Welcome.html|welcome_page.html|welcome_page_code.txt|welcome_page1.html|welcome_page2.html|input|IRPcalculator (3)
